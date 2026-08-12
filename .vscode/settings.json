@@ -1,0 +1,30 @@
+{
+    // Format code on save for all types of files.
+    "editor.formatOnSave": true,
+    // Python-specific settings.
+    "[python]": {
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.defaultColorDecorators": "never",
+        "editor.formatOnType": true,
+        "editor.wordBasedSuggestions": "off",
+        "editor.defaultFormatter": "ms-python.black-formatter", // Use Black for formatting Python files.
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": { // Organize imports on save.
+            "source.organizeImports": "explicit"
+        }
+    },
+    "python.analysis.typeCheckingMode": "basic", // Set type checking mode to basic.
+    "python.analysis.importFormat": "absolute", // Use absolute imports.
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "src" // Set PYTHONPATH to src for Windows.
+    },
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "src" // Set PYTHONPATH to src for Linux.
+    },
+    "isort.check": true, // Enable isort checking.
+    "isort.args": [ // Arguments for isort.
+        "--profile",
+        "black"
+    ],
+    "jupyter.notebookFileRoot": "{workspaceFolder}", // Set Jupyter notebook root to workspace folder.
+}

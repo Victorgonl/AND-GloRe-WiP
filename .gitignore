@@ -1,0 +1,26 @@
+# Data
+/data/*
+!data/README.md
+
+# Configs
+/configs/*
+!configs/README.md
+
+# Logs
+/logs/*
+!logs/README.md
+
+# Results
+/results/*
+!/results/README.md
+
+# Outputs
+/outputs/*
+!/outputs/README.md
+
+# Python & pip
+*__pycache__*
+*egg-info*
+
+# Others
+.ignore

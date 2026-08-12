@@ -1,0 +1,28 @@
+{
+	// Container name.
+	"name": "AND-GloRe",
+	// Image with Python, Jupyter, PyTorch, DGL and CUDA pre-installed.
+	"image": "victorgonl/torch-cuda12.4",
+	// Enable GPU support on Docker.
+	"runArgs": [
+		"--gpus=all"
+	],
+	"customizations": {
+		// VS Code extensions and settings.
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.black-formatter",
+				"ms-python.isort",
+				"njpwerner.autodocstring",
+				"ms-toolsai.jupyter",
+				"mechatroner.rainbow-csv",
+				"ms-toolsai.vscode-jupyter-powertoys",
+				"fabiospampinato.vscode-highlight"
+			]
+		}
+	},
+	// Install git, clean apt cache and install local package.
+	// Also install ipykernel to use notebook if needed.
+	"postCreateCommand": "apt update && apt install -y git tree && apt clean && pip install --no-cache-dir -e . && pip install --no-cache-dir -r ./notebooks/requirements.txt"
+}
