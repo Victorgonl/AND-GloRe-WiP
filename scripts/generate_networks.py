@@ -31,7 +31,20 @@ def generate_networks(
 def main():
     args = parse_args()
     config = load_yaml_config(args.config)
-    generate_networks(**config)
+
+    dataset_name = config["dataset_name"]
+    selected_names = config["selected_names"]
+    splits = config["splits"]
+    max_orgs_per_author = config.get("max_orgs_per_author", None)
+    max_author_paper_ratio = config.get("max_author_paper_ratio", None)
+
+    generate_networks(
+        dataset_name=dataset_name,
+        selected_names=selected_names,
+        splits=splits,
+        max_orgs_per_author=max_orgs_per_author,
+        max_author_paper_ratio=max_author_paper_ratio,
+    )
 
 
 if __name__ == "__main__":
