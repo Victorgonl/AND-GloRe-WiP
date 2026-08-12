@@ -79,7 +79,7 @@ def run_andglore_experiment(
 
             # Logging
             logger.info(
-                f"Run {run}/{len(loop)} - Name {name_index}/{len(names)}: {name} - Avg. F1: {live_pf1:.4f}",
+                f"Run {run}/{len(loop)} - Name {name_index}/{len(names)}: {name} - Avg. F1: {(live_pf1/(name_index+1)):.4f}",
                 extra={"show_time": True},
             )
 
