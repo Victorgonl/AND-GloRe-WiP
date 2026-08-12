@@ -4,7 +4,7 @@ networkx==3.6.1
 numpy==2.4.3
 pandas==3.0.1
 scikit-learn==1.9.0
-torch==2.4.1
+torch
 torchdata==0.11.0
 tqdm==4.68.4
 PyYAML==6.0.3
