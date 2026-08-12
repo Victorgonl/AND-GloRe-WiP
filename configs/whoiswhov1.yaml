@@ -1,0 +1,32 @@
+dataset_name: "whoiswhov1"
+
+networks_path: "data/whoiswhov1/networks_test.pt"
+splits: ["test"]
+#splits: ["train", "val", "test"]
+
+results_folder: "results/"
+log_file: "logs/experiment-whoiswhov1.log"
+outputs_path: "outputs/whoiswhov1.pt"
+
+selected_names: null
+#selected_names: ["gang_li", "jie_tang"] # Specific names
+
+training_args:
+  seeds: [2026]
+  epochs: 50
+  lr: 0.0001
+  l2_coef: 0.0001
+  feat_mask: 0.1
+  adj_mask: 0.2
+  hidden_dim: 128
+  embed_dim: 64
+  proj_dim: 64
+  dropout: 0.1
+  gnn_hidden_dim: 256
+  gnn_dropout: 0.1
+  gnn_alpha: 0.2
+  temperature: 0.1
+  min_distance_threshold: 0.1
+  max_distance_threshold: 0.3
+  step: 0.05
+  device: "cuda"
