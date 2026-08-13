@@ -1,3 +1,4 @@
+import argparse
 from typing import Optional
 
 from andglore.networks import build_ambiguous_networks
@@ -30,13 +31,19 @@ def generate_networks(
 
 def main():
     args = parse_args()
+
     config = load_yaml_config(args.config)
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--max_orgs_per_author", type=int, default=None)
+    parser.add_argument("--max_author_paper_ratio", type=float, default=None)
 
     dataset_name = config["dataset_name"]
     selected_names = config["selected_names"]
     splits = config["splits"]
-    max_orgs_per_author = config.get("max_orgs_per_author", None)
-    max_author_paper_ratio = config.get("max_author_paper_ratio", None)
+    max_orgs_per_author = args.max_orgs_per_author
+    max_author_paper_ratio = args.max_author_paper_ratio
 
     generate_networks(
         dataset_name=dataset_name,
