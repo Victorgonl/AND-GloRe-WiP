@@ -12,10 +12,6 @@ def generate_networks(
     max_orgs_per_author: Optional[int] = None,
     max_author_paper_ratio: Optional[float] = None,
 ):
-    """
-    Generate AND Networks using preprocessed.csv and features.pt.
-    """
-
     build_ambiguous_networks(
         dataset_name=dataset_name,
         df_path=f"data/{dataset_name}/preprocessed.csv",
@@ -34,21 +30,10 @@ if __name__ == "__main__":
 
     config = load_yaml_config(args.config)
 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--max_orgs_per_author", type=int, default=None)
-    parser.add_argument("--max_author_paper_ratio", type=float, default=None)
-
-    dataset_name = config["dataset_name"]
-    selected_names = config["selected_names"]
-    splits = config["splits"]
-    max_orgs_per_author = args.max_orgs_per_author
-    max_author_paper_ratio = args.max_author_paper_ratio
-
     generate_networks(
-        dataset_name=dataset_name,
-        selected_names=selected_names,
-        splits=splits,
-        max_orgs_per_author=max_orgs_per_author,
-        max_author_paper_ratio=max_author_paper_ratio,
+        dataset_name=config["dataset_name"],
+        selected_names=config["selected_names"],
+        splits=config["splits"],
+        max_orgs_per_author=args.max_orgs_per_author,
+        max_author_paper_ratio=args.max_author_paper_ratio,
     )
