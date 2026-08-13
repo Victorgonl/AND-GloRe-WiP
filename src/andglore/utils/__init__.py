@@ -30,18 +30,36 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run AND-GloRe experiment from a YAML config file."
     )
+
     parser.add_argument(
         "--config",
         type=str,
         help="Path to YAML config file.",
     )
+
+    parser.add_argument(
+        "--max_orgs_per_author",
+        type=int,
+        default=None,
+        help="Maximum number of organizations allowed per author.",
+    )
+
+    parser.add_argument(
+        "--max_author_paper_ratio",
+        type=float,
+        default=None,
+        help="Maximum author-to-paper ratio.",
+    )
+
     args = parser.parse_args()
+
     if not args.config:
         parser.print_help()
         parser.exit(
             2,
             "\nError: no config provided. Use --config <path-to-yml>.\n",
         )
+
     return args
 
 
