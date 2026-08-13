@@ -29,7 +29,7 @@ def generate_networks(
     )
 
 
-def main():
+if __name__ == "__main__":
     args = parse_args()
 
     config = load_yaml_config(args.config)
@@ -52,7 +52,3 @@ def main():
         max_orgs_per_author=max_orgs_per_author,
         max_author_paper_ratio=max_author_paper_ratio,
     )
-
-
-if __name__ == "__main__":
-    main()
