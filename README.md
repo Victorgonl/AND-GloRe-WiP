@@ -75,6 +75,29 @@ Experiment metrics are stored in the `results` folder.
 
 Disambiguation representations and inferred clusters are stored in the `outputs` folder.
 
+### Running the MCCG baseline
+
+MCCG uses the same `preprocessed.csv` and `features.pt` files. First generate its
+homogeneous paper networks, then run the reference MCCG training method:
+
+```
+python scripts/generate_networks_mccg.py --config configs/whoiswhov1_mccg.yaml
+python scripts/run_experiment_mccg.py --config configs/whoiswhov1_mccg.yaml
+```
+
+The optional coauthor filters used by AND-GloRe network generation are also
+available for MCCG:
+
+```
+python scripts/generate_networks_mccg.py \
+  --config configs/whoiswhov1_mccg.yaml \
+  --max_orgs_per_author 10 \
+  --max_author_paper_ratio 0.5
+```
+
+MCCG networks, logs, results, outputs, scripts, and configurations use the
+`_mccg` suffix so they do not overwrite AND-GloRe artifacts.
+
 ## Citation
 
 🚧 *Work in progress...*

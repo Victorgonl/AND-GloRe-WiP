@@ -1,0 +1,37 @@
+dataset_name: "whoiswhov1"
+
+preprocessed_path: "data/whoiswhov1/preprocessed.csv"
+features_path: "data/whoiswhov1/features.pt"
+networks_folder: "data/whoiswhov1"
+networks_path: "data/whoiswhov1/networks_test_mccg.pt"
+splits: ["test"]
+
+results_folder: "results/"
+networks_log_file: "logs/networks-whoiswhov1_mccg.log"
+log_file: "logs/experiment-whoiswhov1_mccg.log"
+outputs_path: "outputs/whoiswhov1_mccg.pt"
+
+selected_names: null
+
+training_args:
+  seeds: [2026]
+  epochs: 50
+  lr: 0.0001
+  layer_shape: [100, 256, 256]
+  dim_proj_multiview: 128
+  dim_proj_cluster: 128
+  drop_scheme: "degree"
+  drop_feature_rate_view1: 0.4
+  drop_feature_rate_view2: 0.2
+  drop_edge_rate_view1: 0.4
+  drop_edge_rate_view2: 0.5
+  th_a: 1
+  th_o: 0.5
+  th_v: 2
+  db_eps: 0.1
+  db_min: 4
+  l2_coef: 0.2
+  w_cluster: 0.6
+  t_multiview: 0.3
+  t_cluster: 0.3
+  device: "cuda"

@@ -3,7 +3,6 @@
 !data/README.md
 
 # Configs
-/configs/*
 !configs/README.md
 
 # Logs
@@ -24,3 +23,4 @@
 
 # Others
 .ignore
+references
