@@ -309,21 +309,27 @@ def run_andglore_experiment(
     overall = results_df[results_df["name"] == AVERAGE_NAME].iloc[0]
     logger.info(
         "Average Results Across All Names",
-        extra={"show_time": True},
+        extra={"show_time": True, "print": True},
     )
     logger.info(
         f"Runtime: {timedelta(seconds=int(overall['runtime_mean']))} "
-        f"(± {timedelta(seconds=int(overall['runtime_std']))})"
+        f"(± {timedelta(seconds=int(overall['runtime_std']))})",
+        extra={"print": True},
     )
     logger.info(
         f"pP: {overall['pP_mean']:.2%} (± {overall['pP_std']:.2%}) "
         f"pR: {overall['pR_mean']:.2%} (± {overall['pR_std']:.2%}) "
-        f"pF1: {overall['pF1_mean']:.2%} (± {overall['pF1_std']:.2%})"
+        f"pF1: {overall['pF1_mean']:.2%} (± {overall['pF1_std']:.2%})",
+        extra={"print": True},
     )
     logger.info(
         f"bP: {overall['bP_mean']:.2%} (± {overall['bP_std']:.2%}) "
         f"bR: {overall['bR_mean']:.2%} (± {overall['bR_std']:.2%}) "
-        f"bF1: {overall['bF1_mean']:.2%} (± {overall['bF1_std']:.2%})"
+        f"bF1: {overall['bF1_mean']:.2%} (± {overall['bF1_std']:.2%})",
+        extra={"print": True},
     )
-    logger.info(f"ARI: {overall['ari_mean']:.2%} (± {overall['ari_std']:.2%})")
-    logger.info("")
+    logger.info(
+        f"ARI: {overall['ari_mean']:.2%} (± {overall['ari_std']:.2%})",
+        extra={"print": True},
+    )
+    logger.info("", extra={"break_line": True, "print": True})
