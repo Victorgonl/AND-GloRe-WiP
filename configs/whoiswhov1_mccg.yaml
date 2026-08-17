@@ -14,7 +14,7 @@ outputs_path: "outputs/whoiswhov1_mccg.pt"
 selected_names: null
 
 training_args:
-  sseeds: [20261, 20262, 20263, 20264, 20265]
+  seeds: [20261, 20262, 20263, 20264, 20265]
   epochs: 50
   lr: 0.0001
   layer_shape: [100, 256, 256]
