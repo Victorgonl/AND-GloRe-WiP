@@ -12,14 +12,18 @@ class LoggerFormatter(logging.Formatter):
         if getattr(record, "break_line", False):
             log = log + "\n"
 
+        log = record.getMessage()
         if record.levelno == logging.INFO:
-            return log
+            log = log
         if record.levelno == logging.WARNING:
-            return f"[WARNING] {log}"
+            log = f"[WARNING] {log}"
         if record.levelno >= logging.ERROR:
-            return f"[ERROR] {log}"
+            log = f"[ERROR] {log}"
 
-        return record.getMessage()
+        if getattr(record, "print", False):
+            print(log)
+
+        return log
 
 
 class Logger:

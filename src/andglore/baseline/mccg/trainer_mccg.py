@@ -306,20 +306,29 @@ def run_experiment_mccg(
 
     results_frame = save_csv_results(results, results_csv_path, outputs, outputs_path)
     overall = results_frame[results_frame["name"] == AVERAGE_NAME].iloc[0]
-    logger.info("Average MCCG Results Across All Names", extra={"show_time": True})
+    logger.info(
+        "Average MCCG Results Across All Names",
+        extra={"show_time": True, "print": True},
+    )
     logger.info(
         f"Runtime: {timedelta(seconds=int(overall['runtime_mean']))} "
-        f"(± {timedelta(seconds=int(overall['runtime_std']))})"
+        f"(± {timedelta(seconds=int(overall['runtime_std']))})",
+        extra={"print": True},
     )
     logger.info(
         f"pP: {overall['pP_mean']:.2%} (± {overall['pP_std']:.2%}) "
         f"pR: {overall['pR_mean']:.2%} (± {overall['pR_std']:.2%}) "
-        f"pF1: {overall['pF1_mean']:.2%} (± {overall['pF1_std']:.2%})"
+        f"pF1: {overall['pF1_mean']:.2%} (± {overall['pF1_std']:.2%})",
+        extra={"print": True},
     )
     logger.info(
         f"bP: {overall['bP_mean']:.2%} (± {overall['bP_std']:.2%}) "
         f"bR: {overall['bR_mean']:.2%} (± {overall['bR_std']:.2%}) "
-        f"bF1: {overall['bF1_mean']:.2%} (± {overall['bF1_std']:.2%})"
+        f"bF1: {overall['bF1_mean']:.2%} (± {overall['bF1_std']:.2%})",
+        extra={"print": True},
     )
-    logger.info(f"ARI: {overall['ari_mean']:.2%} (± {overall['ari_std']:.2%})")
-    logger.info("")
+    logger.info(
+        f"ARI: {overall['ari_mean']:.2%} (± {overall['ari_std']:.2%})",
+        extra={"print": True},
+    )
+    logger.info("", extra={"break_line": True, "print": True})
