@@ -16,8 +16,8 @@ training_args:
   epochs: 15
   lr: 0.0001
   l2_coef: 0.0001
-  feat_mask: 0.1
-  adj_mask: 0.2
+  feat_mask: 0.3
+  adj_mask: 0.7
   hidden_dim: 128
   embed_dim: 64
   proj_dim: 64
