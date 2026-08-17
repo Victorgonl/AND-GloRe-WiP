@@ -33,8 +33,8 @@ class Logger:
 
         formatter = LoggerFormatter()
 
-        console = logging.StreamHandler()
-        console.setFormatter(formatter)
+        # console = logging.StreamHandler()
+        # console.setFormatter(formatter)
 
         if log_file is None:
             log_file = "logs/temp.log"
@@ -42,5 +42,5 @@ class Logger:
         file = logging.FileHandler(log_file, mode="w", encoding="utf-8")
         file.setFormatter(formatter)
 
-        self.logger.addHandler(console)
+        # self.logger.addHandler(console)
         self.logger.addHandler(file)
