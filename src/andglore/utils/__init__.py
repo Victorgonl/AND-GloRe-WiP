@@ -105,6 +105,6 @@ def save_csv_results(
     summary_df = pd.concat([summary_df, pd.DataFrame([overall_row])], ignore_index=True)
 
     if results_csv_path is not None:
-        summary_df.to_csv(results_csv_path, index=False)
+        summary_df.to_csv(results_csv_path, index=False, float_format="%.2f")
 
     return summary_df
