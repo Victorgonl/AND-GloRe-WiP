@@ -2,8 +2,6 @@ import time
 from datetime import timedelta
 from typing import Optional
 
-import numpy as np
-import scipy.sparse as sp
 import torch
 from tqdm import tqdm
 
