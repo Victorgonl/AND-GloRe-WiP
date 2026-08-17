@@ -12,7 +12,7 @@ selected_names: null
 #selected_names: ["wei_wang"]
 
 training_args:
-  seeds: [2026]
+  seeds: [20261, 20262, 20263, 20264, 20265]
   epochs: 15
   lr: 0.0001
   l2_coef: 0.0001

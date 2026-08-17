@@ -12,7 +12,7 @@ selected_names: null
 #selected_names: ["gang_li", "jie_tang"] # Specific names
 
 training_args:
-  seeds: [2026]
+  seeds: [20261, 20262, 20263, 20264, 20265]
   epochs: 50
   lr: 0.0001
   l2_coef: 0.0001

@@ -105,6 +105,13 @@ def save_csv_results(
     summary_df = pd.concat([summary_df, pd.DataFrame([overall_row])], ignore_index=True)
 
     if results_csv_path is not None:
-        summary_df.to_csv(results_csv_path, index=False, float_format="%.2f")
+        csv_df = summary_df.copy()
+        percentage_columns = [
+            column
+            for column in csv_df.columns
+            if column != "name" and not column.startswith("runtime_")
+        ]
+        csv_df[percentage_columns] = csv_df[percentage_columns] * 100
+        csv_df.to_csv(results_csv_path, index=False, float_format="%.2f")
 
     return summary_df

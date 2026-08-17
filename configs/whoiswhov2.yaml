@@ -10,7 +10,7 @@ outputs_path: "outputs/whoiswhov2.pt"
 selected_names: null 
 
 training_args:
-  seeds: [2026]
+  seeds: [20261, 20262, 20263, 20264, 20265]
   epochs: 70
   lr: 0.00008
   l2_coef: 0.0001
