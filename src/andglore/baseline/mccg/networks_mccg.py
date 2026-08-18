@@ -332,11 +332,15 @@ def _build_name_network_mccg(
                 ):
                     affiliations_by_author[compact_author].add(organization)
 
-    authors_over_affiliation_limit = {
-        author
-        for author, organizations in affiliations_by_author.items()
-        if len(organizations) > max_org_affiliation
-    } if max_org_affiliation is not None else set()
+    authors_over_affiliation_limit = (
+        {
+            author
+            for author, organizations in affiliations_by_author.items()
+            if len(organizations) > max_org_affiliation
+        }
+        if max_org_affiliation is not None
+        else set()
+    )
 
     for row in group.itertuples(index=False):
         authors = [str(author) for author in _parse_list_mccg(row.authors)]
