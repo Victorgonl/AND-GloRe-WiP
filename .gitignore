@@ -1,5 +1,6 @@
 # Data
-/data/*
+/data/*/*
+data/*/*_networks_test.pt
 !data/README.md
 
 # Configs
