@@ -1,19 +1,22 @@
 dataset_name: "whoiswhov1"
 
-networks_path: "data/whoiswhov1/networks_test.pt"
+networks_path: "data/whoiswhov1/andglore_networks_test.pt"
 splits: ["test"]
 #splits: ["train", "val", "test"]
 
 results_folder: "results/"
-log_file: "logs/experiment-whoiswhov1.log"
-outputs_path: "outputs/whoiswhov1.pt"
+networks_log_file: "logs/andglore_networks_whoiswhov1.log"
+log_file: "logs/andglore_experiment_whoiswhov1.log"
+outputs_path: "outputs/andglore_whoiswhov1.pt"
 
 selected_names: null
 #selected_names: ["gang_li", "jie_tang"] # Specific names
 
+max_org_affiliation: 5
+
 training_args:
   seeds: [2026]
-  epochs: 50
+  epochs: 20
   lr: 0.0001
   l2_coef: 0.0001
   feat_mask: 0.1

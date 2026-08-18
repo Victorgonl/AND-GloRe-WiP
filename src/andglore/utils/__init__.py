@@ -51,6 +51,16 @@ def parse_args() -> argparse.Namespace:
         help="Maximum author-to-paper ratio.",
     )
 
+    parser.add_argument(
+        "--max_org_affiliation",
+        type=int,
+        default=None,
+        help=(
+            "Remove authors with more than this many distinct affiliations and "
+            "connect their organizations directly to each paper."
+        ),
+    )
+
     args = parser.parse_args()
 
     if not args.config:

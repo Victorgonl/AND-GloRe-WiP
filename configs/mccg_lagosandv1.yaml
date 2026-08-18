@@ -2,16 +2,17 @@ dataset_name: "lagosandv1"
 
 preprocessed_path: "data/lagosandv1/preprocessed.csv"
 features_path: "data/lagosandv1/features.pt"
-networks_folder: "data/lagosandv1"
-networks_path: "data/lagosandv1/networks_test_mccg.pt"
+networks_path: "data/lagosandv1/mccg_networks_test.pt"
 splits: ["test"]
 
 results_folder: "results/"
-networks_log_file: "logs/networks-lagosandv1_mccg.log"
-log_file: "logs/experiment-lagosandv1_mccg.log"
-outputs_path: "outputs/lagosandv1_mccg.pt"
+networks_log_file: "logs/mccg_networks_lagosandv1.log"
+log_file: "logs/mccg_experiment_lagosandv1.log"
+outputs_path: "outputs/mccg_lagosandv1.pt"
 
 selected_names: null
+
+max_org_affiliation: 5
 
 training_args:
   seeds: [2026]

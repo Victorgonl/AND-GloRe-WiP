@@ -19,7 +19,7 @@ from andglore.utils import AVERAGE_NAME, save_csv_results, set_seed
 
 def run_andglore_experiment(
     dataset_name: str,
-    networks_path,
+    networks: list,
     training_args: TrainingArgs,
     log_file_path: Optional[str] = None,
     results_csv_path: Optional[str] = None,
@@ -32,12 +32,7 @@ def run_andglore_experiment(
     # Logging
     logger.info("Starting Experiment", extra={"show_time": True, "break_line": True})
     logger.info(f"Experiments Args:{training_args}", extra={"break_line": True})
-
-    # Load the ambiguous networks
-    networks = torch.load(
-        networks_path,
-        weights_only=False,
-    )
+    
     networks_by_name = {graph.graph["name"]: graph for graph in networks}
 
     # Prepare names

@@ -23,6 +23,15 @@ def main_mccg() -> None:
         default=None,
         help="Remove coauthors occurring in more than this fraction of a name group's papers.",
     )
+    parser_mccg.add_argument(
+        "--max_org_affiliation",
+        type=int,
+        default=None,
+        help=(
+            "Remove authors with more than this many distinct affiliations and "
+            "use their organizations as direct paper relations."
+        ),
+    )
     args_mccg = parser_mccg.parse_args()
     config_mccg = load_yaml_config(args_mccg.config)
     dataset_name_mccg = config_mccg["dataset_name"]
@@ -34,7 +43,7 @@ def main_mccg() -> None:
             "features_path", f"data/{dataset_name_mccg}/features.pt"
         ),
         dataset_name=dataset_name_mccg,
-        save_folder=config_mccg.get("networks_folder", f"data/{dataset_name_mccg}"),
+        networks_path=config_mccg["networks_path"],
         selected_names=config_mccg.get("selected_names"),
         splits=config_mccg.get("splits"),
         logs_file=config_mccg.get(
@@ -49,6 +58,11 @@ def main_mccg() -> None:
             args_mccg.max_author_paper_ratio
             if args_mccg.max_author_paper_ratio is not None
             else config_mccg.get("max_author_paper_ratio")
+        ),
+        max_org_affiliation=(
+            args_mccg.max_org_affiliation
+            if args_mccg.max_org_affiliation is not None
+            else config_mccg.get("max_org_affiliation")
         ),
     )
 

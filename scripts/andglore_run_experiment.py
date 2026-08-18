@@ -1,5 +1,7 @@
 import os
 
+import torch
+
 from andglore.trainer import TrainingArgs, run_andglore_experiment
 from andglore.utils import load_yaml_config, parse_args
 
@@ -30,9 +32,14 @@ def main():
 
     selected_names = config.get("selected_names")
 
+    networks = torch.load(
+        networks_path,
+        weights_only=False,
+    )
+
     run_andglore_experiment(
         dataset_name=dataset_name,
-        networks_path=networks_path,
+        networks=networks,
         training_args=training_args,
         selected_names=selected_names,
         results_csv_path=results_path,  # type: ignore

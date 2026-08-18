@@ -2,7 +2,7 @@ import ast
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Dict, Iterable, Literal, Optional
 
 import networkx as nx
 import pandas as pd
@@ -18,6 +18,10 @@ NODE_TYPES = Literal["paper", "author", "venue", "org"]
 
 def load_dataset(path: str | os.PathLike[str]) -> pd.DataFrame:
     return pd.read_csv(path)
+
+
+def load_embeddings(path: str | os.PathLike[str]) -> dict[Any, torch.Tensor]:
+    return _validate_embeddings(torch.load(path, map_location="cpu", weights_only=True))
 
 
 def _parse_list(value: Any) -> list:
@@ -108,10 +112,6 @@ def _remove_singular_degree_non_paper(graph: nx.Graph) -> None:
         graph.remove_nodes_from(nodes_to_remove)
 
 
-def _load_embeddings(path: str | os.PathLike[str]) -> dict[Any, torch.Tensor]:
-    return _validate_embeddings(torch.load(path, map_location="cpu", weights_only=True))
-
-
 def _build_network(
     group: pd.DataFrame,
     target_name: str,
@@ -120,6 +120,8 @@ def _build_network(
     embeddings: dict[Any, torch.Tensor],
     max_orgs_per_author: Optional[int] = None,
     max_author_paper_ratio: Optional[float] = None,
+    ignore_authors: Optional[list[str]] = None,
+    max_org_affiliation: Optional[int] = None,
 ) -> nx.Graph:
     graph = nx.Graph(name=target_name, split=split, dataset=dataset_name)
     papers: list[tuple[Any, int, int]] = []
@@ -134,6 +136,27 @@ def _build_network(
     venue_occurrences: dict[str, int] = defaultdict(int)
     author_occurrences: dict[str, int] = defaultdict(int)
     org_occurrences: dict[str, int] = defaultdict(int)
+    ignored_authors = set(ignore_authors or [])
+    if max_org_affiliation is not None:
+        if max_org_affiliation < 0:
+            raise ValueError("max_org_affiliation must be non-negative")
+
+        affiliations_by_author: dict[str, set[str]] = defaultdict(set)
+        for _, row in group.iterrows():
+            authors = _parse_list(row["authors"])
+            orgs = _parse_list(row["orgs"])
+            if split != "test":
+                authors = authors[:MAX_AUTHORS_OR_ORGS_FOR_NON_TEST]
+                orgs = orgs[:MAX_AUTHORS_OR_ORGS_FOR_NON_TEST]
+            for author, org in zip(authors, orgs):
+                if author and author != target_name and org:
+                    affiliations_by_author[author].add(org)
+
+        ignored_authors.update(
+            author
+            for author, organizations in affiliations_by_author.items()
+            if len(organizations) > max_org_affiliation
+        )
 
     for _, row in group.iterrows():
         paper_id = row["id"]
@@ -154,6 +177,11 @@ def _build_network(
 
         for author, org in zip(authors, orgs):
             if author and author != target_name:
+                if author in ignored_authors:
+                    if org:
+                        paper_org[paper_id].add(org)
+                        org_occurrences[org] += 1
+                    continue
                 author_occurrences[author] += 1
                 paper_author[paper_id].add(author)
                 if org:
@@ -296,21 +324,22 @@ def _build_network(
 
 
 def build_ambiguous_networks(
-    df_path: str,
     dataset_name: str,
-    save_folder: str,
+    preprocessed: pd.DataFrame,
+    embeddings: Dict[Any, torch.Tensor],
+    save_folder: Optional[str] = None,
     logs_file: Optional[str] = None,
     selected_names: Optional[list[str]] = None,
     splits: Optional[list[str]] = None,
-    embeddings_path: Optional[str] = None,
     max_orgs_per_author: Optional[int] = None,
     max_author_paper_ratio: Optional[float] = None,
+    ignore_authors: Optional[list[str]] = None,
+    max_org_affiliation: Optional[int] = None,
+    networks_path: Optional[str | os.PathLike[str]] = None,
 ) -> list[nx.Graph]:
     """Generate and save one undirected NetworkX graph per ambiguous name."""
 
-    if embeddings_path is None:
-        raise ValueError("embeddings_path is required to train AND-GloRe")
-    dataframe = load_dataset(df_path)
+    dataframe = preprocessed
     required = {"id", "name", "split", "label", "authors", "orgs", "venue", "year"}
     missing = required.difference(dataframe.columns)
     if missing:
@@ -321,7 +350,6 @@ def build_ambiguous_networks(
     if splits is not None:
         dataframe = dataframe[dataframe["split"].isin(splits)]
 
-    embeddings = _load_embeddings(embeddings_path)
     networks: list[nx.Graph] = []
     grouped = dataframe.groupby("name", sort=False)
     for target_name, group in tqdm(
@@ -339,23 +367,33 @@ def build_ambiguous_networks(
                 embeddings,
                 max_orgs_per_author=max_orgs_per_author,
                 max_author_paper_ratio=max_author_paper_ratio,
+                ignore_authors=ignore_authors,
+                max_org_affiliation=max_org_affiliation,
             )
         )
 
-    output_folder = Path(save_folder)
-    output_folder.mkdir(parents=True, exist_ok=True)
-    output_splits: Iterable[str] = splits or dict.fromkeys(
-        graph.graph["split"] for graph in networks
-    )
-    for split in output_splits:
-        split_networks = [graph for graph in networks if graph.graph["split"] == split]
-        torch.save(split_networks, output_folder / f"networks_{split}.pt")
+    if networks_path is not None:
+        output_path = Path(networks_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(networks, output_path)
+    elif save_folder:
+        output_folder = Path(save_folder)
+        output_folder.mkdir(parents=True, exist_ok=True)
+        output_splits: Iterable[str] = splits or dict.fromkeys(
+            graph.graph["split"] for graph in networks
+        )
+        for split in output_splits:
+            split_networks = [
+                graph for graph in networks if graph.graph["split"] == split
+            ]
+            torch.save(split_networks, output_folder / f"networks_{split}.pt")
 
     if logs_file:
         log_path = Path(logs_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text(
-            f"Generated {len(networks)} NetworkX graphs for {dataset_name}.\n",
+            f"Generated {len(networks)} NetworkX graphs for {dataset_name}.\n"
+            f"max_org_affiliation={max_org_affiliation}\n",
             encoding="utf-8",
         )
     return networks

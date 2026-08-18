@@ -1,13 +1,18 @@
+import ast
 import math
 from importlib import import_module
+from itertools import zip_longest
+from pathlib import Path
 from typing import Optional
 
 import matplotlib
 import matplotlib.colors
 import matplotlib.lines
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import networkx as nx
 import numpy as np
+import pandas as pd
 import scipy.sparse as sp
 import seaborn as sns
 import torch
@@ -800,11 +805,12 @@ def plot_hetero_graph_plotly(
     k: Optional[float] = SPRING_K_DEFAULT,
     figsize=FIGSIZE_GRAPH,
     title=None,
-    show: bool = True,
+    show: bool = False,
     show_soft_links: bool = False,
+    ignore_node_ids: Optional[list] = None,
 ):
     """
-    Plot a heterogeneous author-name-disambiguation graph using Plotly.
+    Plot a heterogeneous Sauthor-name-disambiguation graph using Plotly.
 
     This mirrors `plot_hetero_graph`, but produces an interactive Plotly figure.
 
@@ -818,6 +824,7 @@ def plot_hetero_graph_plotly(
         figsize: Figure size in inches (converted to pixels at 100 dpi).
         title: Optional plot title.
         show: If True and `output_file` is None, display interactively.
+        ignore_node_ids: Optional list of NetworkX node IDs to exclude from the plot.
 
     Returns:
         A `plotly.graph_objects.Figure`.
@@ -829,6 +836,10 @@ def plot_hetero_graph_plotly(
         raise ImportError(
             "plotly is required for plot_hetero_graph_plotly. Install with `pip install plotly`."
         ) from exc
+
+    ignored_nodes = set(ignore_node_ids or [])
+    if ignored_nodes:
+        G = G.subgraph(node for node in G if node not in ignored_nodes)
 
     # ---- collect nodes by type ----
     paper_nodes = [n for n, d in G.nodes(data=True) if d.get("type") == "paper"]
@@ -1131,6 +1142,171 @@ def plot_hetero_graph_plotly(
             print(f"Hetero graph plotly image saved to: {output_path}")
     elif show:
         fig.show()
+
+    return fig
+
+
+def plot_homo_graph_plotly(
+    G: nx.Graph,
+    output_file=None,
+    show_id_labels: bool = False,
+    k: Optional[float] = SPRING_K_DEFAULT,
+    figsize=FIGSIZE_GRAPH,
+    title=None,
+    show: bool = False,
+    ignore_node_ids: Optional[list] = None,
+):
+    """Plot a homogeneous paper graph using Plotly."""
+
+    try:
+        plotly_go = import_module("plotly.graph_objects")
+    except ImportError as exc:
+        raise ImportError(
+            "plotly is required for plot_homo_graph_plotly. Install with `pip install plotly`."
+        ) from exc
+
+    ignored_nodes = set(ignore_node_ids or [])
+    if ignored_nodes:
+        G = G.subgraph(node for node in G if node not in ignored_nodes)
+
+    nodes = list(G.nodes())
+    if not nodes:
+        print(f"Graph for {G.graph.get('name', 'unknown')} is empty. Skipping plot.")
+        return None
+
+    layout_G = nx.Graph()
+    layout_G.add_nodes_from(nodes)
+    layout_G.add_edges_from(G.edges())
+    pos = nx.spring_layout(
+        layout_G, k=k, iterations=SPRING_ITERATIONS, seed=SPRING_SEED
+    )
+
+    labels = np.array([G.nodes[node].get("label", -1) for node in nodes])
+    unique_labels, label_counts = np.unique(labels, return_counts=True)
+    palette = _build_palette(unique_labels)
+    label2count = dict(zip(unique_labels, label_counts))
+
+    fig = plotly_go.Figure()
+
+    edge_x = []
+    edge_y = []
+    for source, target in layout_G.edges():
+        x0, y0 = pos[source]
+        x1, y1 = pos[target]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    fig.add_trace(
+        plotly_go.Scatter(
+            x=edge_x,
+            y=edge_y,
+            mode="lines",
+            line=dict(color=GRAPH_EDGE_COLOR, width=1),
+            opacity=EDGE_ALPHA,
+            hoverinfo="skip",
+            name=f"Edges ({layout_G.number_of_edges()})",
+        )
+    )
+
+    for label in unique_labels:
+        label_nodes = [
+            node for node in nodes if G.nodes[node].get("label", -1) == label
+        ]
+        fig.add_trace(
+            plotly_go.Scatter(
+                x=[pos[node][0] for node in label_nodes],
+                y=[pos[node][1] for node in label_nodes],
+                mode="markers",
+                text=[str(node) for node in label_nodes],
+                customdata=[layout_G.degree(node) for node in label_nodes],
+                marker=dict(
+                    size=8,
+                    color=matplotlib.colors.to_hex(palette[label]),
+                    opacity=SCATTER_ALPHA,
+                    symbol="circle",
+                    line=dict(color=SCATTER_EDGE_COLOR, width=SCATTER_LINEWIDTH),
+                ),
+                name=f"Paper label {label} ({label2count[label]})",
+                hovertemplate=(
+                    f"type=paper<br>node=%{{text}}<br>label={label}"
+                    "<br>degree=%{customdata}<extra></extra>"
+                ),
+            )
+        )
+
+    if show_id_labels:
+        node_array = np.array(nodes)
+        for label in unique_labels:
+            mask = labels == label
+            label_pos = np.array([pos[node] for node in node_array[mask]])
+            densest = find_densest_point(label_pos)
+            coord_range = label_pos.max(axis=0) - label_pos.min(axis=0)
+            text_pos = densest + ID_LABEL_OFFSET_FRAC * coord_range
+            fig.add_annotation(
+                x=float(text_pos[0]),
+                y=float(text_pos[1]),
+                text=str(label),
+                showarrow=False,
+                font=dict(
+                    size=ID_LABEL_FONTSIZE,
+                    color=matplotlib.colors.to_hex(palette[label]),
+                ),
+                bordercolor=matplotlib.colors.to_hex(palette[label]),
+                borderpad=2,
+                bgcolor="rgba(0,0,0,0)",
+                opacity=LABEL_TEXT_ALPHA,
+            )
+
+    plot_title = str(G.graph.get("name", "")) if title is None else title
+    fig.update_layout(
+        title=dict(text=plot_title, font=dict(size=12)),
+        width=int(figsize[0] * 100),
+        height=int(figsize[1] * 100),
+        template="plotly_white",
+        showlegend=True,
+        legend=dict(
+            title="Author ID",
+            orientation="h",
+            yanchor="bottom",
+            y=-0.25,
+            xanchor="left",
+            x=0,
+            font=dict(size=10),
+        ),
+        margin=dict(l=10, r=10, t=40, b=90),
+        annotations=list(fig.layout.annotations)
+        + [
+            dict(
+                x=0,
+                y=-0.15,
+                xref="paper",
+                yref="paper",
+                text=(
+                    f"Nodes: {layout_G.number_of_nodes()} | "
+                    f"Edges: {layout_G.number_of_edges()}"
+                ),
+                showarrow=False,
+                align="left",
+                xanchor="left",
+                font=dict(size=10),
+            )
+        ],
+    )
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)
+
+    if output_file:
+        output_path = str(output_file)
+        if output_path.lower().endswith(".html"):
+            fig.write_html(output_path)
+            print(f"Homogeneous graph Plotly figure saved to: {output_path}")
+        else:
+            fig.write_image(output_path)
+            print(f"Homogeneous graph Plotly image saved to: {output_path}")
+    elif show:
+        fig.show()
+
+    return fig
 
 
 def _to_dense_numpy(x):
@@ -1506,3 +1682,151 @@ def plot_metrics(x, y_list, labels, title):
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+
+def plot_author_org_distribution_by_group(
+    preprocessed,
+    selected_names=None,
+    include_zero=True,
+    max_org_count=20,
+    figsize=(10, 5),
+    title="",
+):
+    """Plot distinct organization counts per author from ``preprocessed.csv``."""
+
+    required_columns = {"name", "authors", "orgs"}
+    missing_columns = required_columns.difference(preprocessed.columns)
+    if missing_columns:
+        raise ValueError(
+            "Preprocessed data is missing required columns: "
+            f"{sorted(missing_columns)}"
+        )
+
+    if selected_names is not None:
+        selected_names = set(selected_names)
+        preprocessed = preprocessed[preprocessed["name"].isin(selected_names)].copy()
+
+    if preprocessed.empty:
+        raise ValueError("No ambiguous-name groups were selected.")
+
+    def parse_list(value):
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = ast.literal_eval(value)
+            except (ValueError, SyntaxError):
+                return []
+            return parsed if isinstance(parsed, list) else []
+        return []
+
+    organizations_by_author = {}
+
+    for row in preprocessed.itertuples(index=False):
+        network_name = row.name
+        authors = parse_list(row.authors)
+        organizations = parse_list(row.orgs)
+
+        for author, organization in zip_longest(authors, organizations, fillvalue=""):
+            if author is None or not str(author).strip():
+                continue
+
+            key = (network_name, str(author))
+            author_organizations = organizations_by_author.setdefault(key, set())
+            if organization is not None and str(organization).strip():
+                author_organizations.add(str(organization))
+
+    rows = [
+        {
+            "network": network_name,
+            "author": author,
+            "org_count": len(organizations),
+            "organizations": sorted(organizations),
+        }
+        for (network_name, author), organizations in organizations_by_author.items() if author != network_name
+    ]
+
+    author_counts = pd.DataFrame(rows)
+
+    if author_counts.empty:
+        raise ValueError("No authors were found in the selected preprocessed data.")
+
+    if not include_zero:
+        author_counts = author_counts[author_counts["org_count"] > 0].copy()
+
+    if author_counts.empty:
+        raise ValueError(
+            "No authors remain after excluding authors without organizations."
+        )
+
+    overflow_label = f">{max_org_count}"
+
+    categories = [
+        str(value)
+        for value in range(
+            0 if include_zero else 1,
+            max_org_count + 1,
+        )
+    ] + [overflow_label]
+
+    author_counts["org_count_group"] = np.where(
+        author_counts["org_count"] > max_org_count,
+        overflow_label,
+        author_counts["org_count"].astype(str),
+    )
+
+    author_counts["org_count_group"] = pd.Categorical(
+        author_counts["org_count_group"],
+        categories=categories,
+        ordered=True,
+    )
+
+    distribution = (
+        author_counts.groupby(
+            "org_count_group",
+            observed=False,
+        )
+        .size()
+        .rename("author_count")
+        .reset_index()
+    )
+
+    distribution["percentage"] = (
+        distribution["author_count"] / distribution["author_count"].sum() * 100
+    )
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    bars = ax.bar(
+        distribution["org_count_group"].astype(str),
+        distribution["author_count"],
+        color="steelblue",
+        edgecolor="black",
+        alpha=0.8,
+    )
+
+    ax.set_xlabel("Número de diferentes organizações afiliadas a um autor.")
+    ax.set_ylabel("Número de ocorrências (agrupado por grupo ambíguo)")
+    ax.set_title(title)
+
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax.grid(axis="y", which="major", alpha=0.25)
+
+    for bar in bars:
+        height = bar.get_height()
+
+        if height > 0:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                height,
+                f"{int(height)}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+            )
+
+    plt.tight_layout()
+    plt.show()
+
+    return author_counts

@@ -292,6 +292,7 @@ def _build_name_network_mccg(
     features: dict[Any, torch.Tensor],
     max_orgs_per_author: Optional[int] = None,
     max_author_paper_ratio: Optional[float] = None,
+    max_org_affiliation: Optional[int] = None,
 ) -> dict[str, Any]:
     group = group.drop_duplicates(subset="id", keep="first")
     paper_ids = group["id"].tolist()
@@ -313,17 +314,44 @@ def _build_name_network_mccg(
     venue_tokens_by_paper: list[set[str]] = []
     compact_target_name = _compact_author_mccg(target_name)
 
+    if max_org_affiliation is not None and max_org_affiliation < 0:
+        raise ValueError("max_org_affiliation must be non-negative")
+
+    affiliations_by_author: dict[str, set[str]] = defaultdict(set)
+    if max_org_affiliation is not None:
+        for row in group.itertuples(index=False):
+            authors = [str(author) for author in _parse_list_mccg(row.authors)]
+            orgs = _parse_list_mccg(row.orgs)
+            for author, org in zip(authors, orgs):
+                compact_author = _compact_author_mccg(author)
+                organization = _organization_id_mccg(org)
+                if (
+                    compact_author
+                    and compact_author != compact_target_name
+                    and organization
+                ):
+                    affiliations_by_author[compact_author].add(organization)
+
+    authors_over_affiliation_limit = {
+        author
+        for author, organizations in affiliations_by_author.items()
+        if len(organizations) > max_org_affiliation
+    } if max_org_affiliation is not None else set()
+
     for row in group.itertuples(index=False):
         authors = [str(author) for author in _parse_list_mccg(row.authors)]
         orgs = _parse_list_mccg(row.orgs)
         coauthor_orgs: list[tuple[str, str]] = []
+        target_org_tokens: set[str] = set()
         for author, org in zip_longest(authors, orgs, fillvalue=""):
             compact_author = _compact_author_mccg(author)
             if compact_author and compact_author != compact_target_name:
+                if compact_author in authors_over_affiliation_limit:
+                    target_org_tokens.update(_tokenize_relation_mccg(org))
+                    continue
                 coauthor_orgs.append((compact_author, _organization_id_mccg(org)))
         coauthor_orgs_by_paper.append(coauthor_orgs)
 
-        target_org_tokens: set[str] = set()
         for author, org in zip(authors, orgs):
             if _compact_author_mccg(author) == compact_target_name:
                 target_org_tokens.update(_tokenize_relation_mccg(org))
@@ -379,6 +407,7 @@ def _build_name_network_mccg(
         "venue_overlap": venue_overlap,
         "max_orgs_per_author": max_orgs_per_author,
         "max_author_paper_ratio": max_author_paper_ratio,
+        "max_org_affiliation": max_org_affiliation,
     }
 
 
@@ -386,12 +415,14 @@ def build_homogeneous_networks_mccg(
     preprocessed_path: str | os.PathLike[str],
     features_path: str | os.PathLike[str],
     dataset_name: str,
-    save_folder: str | os.PathLike[str],
+    save_folder: Optional[str | os.PathLike[str]] = None,
     selected_names: Optional[list[str]] = None,
     splits: Optional[list[str]] = None,
     logs_file: Optional[str | os.PathLike[str]] = None,
     max_orgs_per_author: Optional[int] = None,
     max_author_paper_ratio: Optional[float] = None,
+    max_org_affiliation: Optional[int] = None,
+    networks_path: Optional[str | os.PathLike[str]] = None,
 ) -> list[dict[str, Any]]:
     dataframe = load_preprocessed_mccg(preprocessed_path)
     required = {"id", "name", "split", "label", "authors", "orgs", "venue"}
@@ -424,17 +455,25 @@ def build_homogeneous_networks_mccg(
                 features=features,
                 max_orgs_per_author=max_orgs_per_author,
                 max_author_paper_ratio=max_author_paper_ratio,
+                max_org_affiliation=max_org_affiliation,
             )
         )
 
-    output_folder = Path(save_folder)
-    output_folder.mkdir(parents=True, exist_ok=True)
-    output_splits: Iterable[str] = splits or dict.fromkeys(
-        network["split"] for network in networks
-    )
-    for split in output_splits:
-        split_networks = [network for network in networks if network["split"] == split]
-        torch.save(split_networks, output_folder / f"networks_{split}_mccg.pt")
+    if networks_path is not None:
+        output_path = Path(networks_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(networks, output_path)
+    elif save_folder is not None:
+        output_folder = Path(save_folder)
+        output_folder.mkdir(parents=True, exist_ok=True)
+        output_splits: Iterable[str] = splits or dict.fromkeys(
+            network["split"] for network in networks
+        )
+        for split in output_splits:
+            split_networks = [
+                network for network in networks if network["split"] == split
+            ]
+            torch.save(split_networks, output_folder / f"networks_{split}_mccg.pt")
 
     if logs_file is not None:
         log_path = Path(logs_file)
@@ -442,7 +481,8 @@ def build_homogeneous_networks_mccg(
         log_path.write_text(
             f"Generated {len(networks)} MCCG homogeneous networks for {dataset_name}.\n"
             f"max_orgs_per_author={max_orgs_per_author}\n"
-            f"max_author_paper_ratio={max_author_paper_ratio}\n",
+            f"max_author_paper_ratio={max_author_paper_ratio}\n"
+            f"max_org_affiliation={max_org_affiliation}\n",
             encoding="utf-8",
         )
     return networks

@@ -1,23 +1,26 @@
 dataset_name: "lagosandv1"
 
-networks_path: "data/lagosandv1/networks_test.pt"
+networks_path: "data/lagosandv1/andglore_networks_test.pt"
 splits: ["test"]
 #splits: ["train", "val", "test"]
 
 results_folder: "results/"
-log_file: "logs/experiment-lagosandv1.log"
-outputs_path: "outputs/lagosandv1.pt"
+networks_log_file: "logs/andglore_networks_lagosandv1.log"
+log_file: "logs/andglore_experiment_lagosandv1.log"
+outputs_path: "outputs/andglore_lagosandv1.pt"
 
 selected_names: null
 #selected_names: ["wei_wang"]
+
+max_org_affiliation: 5
 
 training_args:
   seeds: [2026]
   epochs: 15
   lr: 0.0001
   l2_coef: 0.0001
-  feat_mask: 0.3
-  adj_mask: 0.7
+  feat_mask: 0.1
+  adj_mask: 0.2
   hidden_dim: 128
   embed_dim: 64
   proj_dim: 64

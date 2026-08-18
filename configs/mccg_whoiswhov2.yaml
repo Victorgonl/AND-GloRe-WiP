@@ -2,16 +2,17 @@ dataset_name: "whoiswhov2"
 
 preprocessed_path: "data/whoiswhov2/preprocessed.csv"
 features_path: "data/whoiswhov2/features.pt"
-networks_folder: "data/whoiswhov2"
-networks_path: "data/whoiswhov2/networks_test_mccg.pt"
+networks_path: "data/whoiswhov2/mccg_networks_test.pt"
 splits: ["test"]
 
 results_folder: "results/"
-networks_log_file: "logs/networks-whoiswhov2_mccg.log"
-log_file: "logs/experiment-whoiswhov2_mccg.log"
-outputs_path: "outputs/whoiswhov2_mccg.pt"
+networks_log_file: "logs/mccg_networks_whoiswhov2.log"
+log_file: "logs/mccg_experiment_whoiswhov2.log"
+outputs_path: "outputs/mccg_whoiswhov2.pt"
 
 selected_names: null
+
+max_org_affiliation: 5
 
 training_args:
   seeds: [2026]
