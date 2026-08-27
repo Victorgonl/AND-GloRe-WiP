@@ -92,25 +92,69 @@ def _validate_embeddings(value: Any) -> dict[Any, torch.Tensor]:
     return result
 
 
-def _remove_singular_degree_non_paper(graph: nx.Graph) -> None:
+def _remove_singular_degree_non_paper(
+    graph: nx.Graph,
+    protected_nodes: set[Any] | None = None,
+) -> None:
     """
     Iteratively removes non-paper nodes (authors, orgs, venues)
     that have a degree of 1 or less until the graph stabilizes.
     """
+    protected_nodes = protected_nodes or set()
+
     while True:
-        # Identify non-paper nodes with degree <= 1
         nodes_to_remove = [
             node
             for node, data in graph.nodes(data=True)
-            if data.get("type") != "paper" and graph.degree(node) <= 1
+            if data.get("type") != "paper"
+            and node not in protected_nodes
+            and graph.degree(node) <= 1
         ]
 
-        # If no nodes meet the criteria, the pruning is complete
         if not nodes_to_remove:
             break
 
-        # Remove the identified nodes (which automatically removes their edges)
         graph.remove_nodes_from(nodes_to_remove)
+
+
+def _authors_requiring_org_split(
+    group: pd.DataFrame,
+    target_name: str,
+    split: str,
+    max_org_affiliation: int | None,
+) -> set[str]:
+    if max_org_affiliation is not None and max_org_affiliation < 0:
+        raise ValueError("max_org_affiliation must be non-negative")
+
+    affiliations_by_author: dict[str, set[str]] = defaultdict(set)
+
+    for _, row in group.iterrows():
+        authors = _parse_list(row["authors"])
+        orgs = _parse_list(row["orgs"])
+
+        if split != "test":
+            authors = authors[:MAX_AUTHORS_OR_ORGS_FOR_NON_TEST]
+            orgs = orgs[:MAX_AUTHORS_OR_ORGS_FOR_NON_TEST]
+
+        for author, org in zip(authors, orgs):
+            author = str(author).strip()
+            org = str(org).strip()
+
+            if not author or author == target_name or not org:
+                continue
+
+            affiliations_by_author[author].add(org)
+
+    authors_to_split: set[str] = set()
+
+    if max_org_affiliation is not None:
+        authors_to_split.update(
+            author
+            for author, organizations in affiliations_by_author.items()
+            if len(organizations) > max_org_affiliation
+        )
+
+    return authors_to_split
 
 
 def _build_network(
@@ -131,33 +175,26 @@ def _build_network(
     paper_venue: dict[Any, set[str]] = defaultdict(set)
     paper_author: dict[Any, set[str]] = defaultdict(set)
 
-    # Track exact (author, org) pairings specific to each paper
+    # Track the exact author-node/org pairing used by each paper.
     paper_author_org: dict[Any, set[tuple[str, str]]] = defaultdict(set)
 
     venue_occurrences: dict[str, int] = defaultdict(int)
     author_occurrences: dict[str, int] = defaultdict(int)
     org_occurrences: dict[str, int] = defaultdict(int)
+
     ignored_authors = set(ignore_authors or [])
-    if max_org_affiliation is not None:
-        if max_org_affiliation < 0:
-            raise ValueError("max_org_affiliation must be non-negative")
+    authors_to_split = _authors_requiring_org_split(
+        group=group,
+        target_name=target_name,
+        split=split,
+        max_org_affiliation=max_org_affiliation,
+    )
 
-        affiliations_by_author: dict[str, set[str]] = defaultdict(set)
-        for _, row in group.iterrows():
-            authors = _parse_list(row["authors"])
-            orgs = _parse_list(row["orgs"])
-            if split != "test":
-                authors = authors[:MAX_AUTHORS_OR_ORGS_FOR_NON_TEST]
-                orgs = orgs[:MAX_AUTHORS_OR_ORGS_FOR_NON_TEST]
-            for author, org in zip(authors, orgs):
-                if author and author != target_name and org:
-                    affiliations_by_author[author].add(org)
-
-        ignored_authors.update(
-            author
-            for author, organizations in affiliations_by_author.items()
-            if len(organizations) > max_org_affiliation
-        )
+    # Nodes created because of max_org_affiliation.
+    # Keep them separate from max_orgs_per_author's later transformation so
+    # their paper -> author -> org path is preserved.
+    split_author_nodes: set[str] = set()
+    split_author_org_pairs: set[tuple[str, str]] = set()
 
     for _, row in group.iterrows():
         paper_id = row["id"]
@@ -177,31 +214,65 @@ def _build_network(
             orgs = orgs[:MAX_AUTHORS_OR_ORGS_FOR_NON_TEST]
 
         for author, org in zip(authors, orgs):
+            author = str(author).strip()
+            org = str(org).strip()
+
             if author and author != target_name:
+                # Explicit ignore_authors keeps the previous behavior: remove
+                # the author node and connect the paper directly to its org.
                 if author in ignored_authors:
                     if org:
                         paper_org[paper_id].add(org)
                         org_occurrences[org] += 1
                     continue
-                author_occurrences[author] += 1
-                paper_author[paper_id].add(author)
+
+                author_node = author
+
+                # For automatically detected ambiguous affiliations, preserve
+                # the paper -> author -> org structure by creating an
+                # organization-specific author node from this paper's pairing.
+                if author in authors_to_split and org:
+                    author_node = f"{author} [{org}]"
+                    split_author_nodes.add(author_node)
+                    split_author_org_pairs.add((author_node, org))
+
+                author_occurrences[author_node] += 1
+                paper_author[paper_id].add(author_node)
+
                 if org:
-                    author_org[author].add(org)
+                    author_org[author_node].add(org)
                     org_occurrences[org] += 1
-                    paper_author_org[paper_id].add((author, org))
+                    paper_author_org[paper_id].add((author_node, org))
+
             elif org and author == target_name:
                 paper_org[paper_id].add(org)
                 org_occurrences[org] += 1
 
-    # Check for name collisions between venues and orgs
-    shared_names = set(venue_occurrences.keys()) & set(org_occurrences.keys())
+    # Keep author node IDs unchanged. When an organization or venue has the
+    # same raw ID as an author (or as each other), suffix the non-author ID so
+    # NetworkX does not merge nodes of different types.
+    author_names = set(author_occurrences)
+    if max_orgs_per_author is not None:
+        author_names.update(
+            f"{author} [{org}]"
+            for paper_pairs in paper_author_org.values()
+            for author, org in paper_pairs
+        )
+    venue_shared_names = set(venue_occurrences) & (
+        set(org_occurrences) | author_names
+    )
+    org_shared_names = set(org_occurrences) & (
+        set(venue_occurrences) | author_names
+    )
 
     embedding_dim = next(iter(embeddings.values())).numel()
     papers = list(dict.fromkeys(papers))
+
     for paper_id, label, year in papers:
         feature = embeddings.get(paper_id)
         if feature is None:
             feature = torch.zeros(embedding_dim, dtype=torch.float32)
+
         graph.add_node(
             paper_id,
             type="paper",
@@ -212,31 +283,34 @@ def _build_network(
 
         for venue in sorted(paper_venue[paper_id]):
             if venue_occurrences[venue] >= 1:
-                venue_node = _venue_id(venue, shared_names)
+                venue_node = _venue_id(venue, venue_shared_names)
                 graph.add_node(venue_node, type="venue", name=venue)
                 _add_edge(graph, paper_id, venue_node, "published_in")
 
-        for author in sorted(paper_author[paper_id]):
-            if author_occurrences[author] >= 1:
-                graph.add_node(author, type="author")
-                _add_edge(graph, paper_id, author, "written_by")
-                for org in sorted(author_org[author]):
+        for author_node in sorted(paper_author[paper_id]):
+            if author_occurrences[author_node] >= 1:
+                graph.add_node(author_node, type="author")
+                _add_edge(graph, paper_id, author_node, "written_by")
+
+                for org in sorted(author_org[author_node]):
                     if org_occurrences[org] >= 1:
-                        org_node = _org_id(org, shared_names)
+                        org_node = _org_id(org, org_shared_names)
                         graph.add_node(org_node, type="org", name=org)
-                        _add_edge(graph, author, org_node, "affiliated_with")
+                        _add_edge(graph, author_node, org_node, "affiliated_with")
 
         for org in sorted(paper_org[paper_id]):
             if org_occurrences[org] >= 1:
-                org_node = _org_id(org, shared_names)
+                org_node = _org_id(org, org_shared_names)
                 graph.add_node(org_node, type="org", name=org)
                 _add_edge(graph, paper_id, org_node, "author_affiliated_with")
 
-    # Apply max_orgs_per_author filtering
+    # Apply max_orgs_per_author filtering.
     if max_orgs_per_author is not None:
         authors_to_remove = set()
 
-        # 1. Find authors tied to an org exceeding the limit
+        # 1. Find ordinary authors tied to an org exceeding the limit.
+        # Organization-specific authors created above are intentionally kept,
+        # because their paper -> author -> org path must remain intact.
         for org_node in _nodes_of_type(graph, "org"):
             org_authors = [
                 neighbor
@@ -244,11 +318,13 @@ def _build_network(
                 if graph.nodes[neighbor].get("type") == "author"
             ]
             if len(org_authors) > max_orgs_per_author:
-                authors_to_remove.update(org_authors)
+                authors_to_remove.update(
+                    author for author in org_authors if author not in split_author_nodes
+                )
 
         edges_to_add = []
 
-        # 2. Map precisely which author and org belong to which paper
+        # 2. Map precisely which author and org belong to which paper.
         for author in authors_to_remove:
             author_papers = [
                 neighbor
@@ -257,40 +333,41 @@ def _build_network(
             ]
 
             for paper in author_papers:
-                # Find the orgs this author was specifically affiliated with for *this* paper
                 orgs_for_this_paper = [
-                    o for (a, o) in paper_author_org[paper] if a == author
+                    org
+                    for paper_author, org in paper_author_org[paper]
+                    if paper_author == author
                 ]
 
                 if not orgs_for_this_paper:
-                    # If they had no org on this paper, just reconnect the standard author node
                     edges_to_add.append((paper, author))
                 else:
                     for org in orgs_for_this_paper:
-                        org_node = _org_id(org, shared_names)
-                        # Ensure we get the clean name to format nicely
+                        org_node = _org_id(org, org_shared_names)
                         org_name = graph.nodes.get(org_node, {}).get("name", org)
                         new_author_node = f"{author} [{org_name}]"
                         edges_to_add.append((paper, new_author_node))
 
-        # 3. Remove the identified original authors
+        # 3. Remove the identified original authors.
         if authors_to_remove:
             graph.remove_nodes_from(authors_to_remove)
 
-        # 4. Add the combined author nodes back (or original ones if no org was present)
+        # 4. Add the combined author nodes back. This preserves the existing
+        # max_orgs_per_author behavior, which intentionally does not reconnect
+        # these generated author nodes to the high-degree org hub.
         for paper, node_id in edges_to_add:
             if not graph.has_node(node_id):
                 graph.add_node(node_id, type="author")
             _add_edge(graph, paper, node_id, "written_by")
 
-        # 5. Clean up any orgs that now have a degree of 0
+        # 5. Clean up any orgs that now have degree 0.
         orgs_to_remove = [
             node for node in _nodes_of_type(graph, "org") if graph.degree(node) == 0
         ]
         if orgs_to_remove:
             graph.remove_nodes_from(orgs_to_remove)
 
-    # Apply max_author_paper_ratio filtering
+    # Apply max_author_paper_ratio filtering.
     if max_author_paper_ratio is not None:
         total_papers = len(papers)
         ratio_threshold = total_papers * max_author_paper_ratio
@@ -311,16 +388,23 @@ def _build_network(
 
     paper_ids = [paper_id for paper_id, _, _ in papers]
 
-    _remove_singular_degree_non_paper(graph)
+    protected_split_nodes: set[Any] = set()
+    for author_node, org in split_author_org_pairs:
+        org_node = _org_id(org, org_shared_names)
+        if graph.has_edge(author_node, org_node):
+            protected_split_nodes.update((author_node, org_node))
 
-    # Ensure minimum node counts
+    _remove_singular_degree_non_paper(
+        graph,
+        protected_nodes=protected_split_nodes,
+    )
+
+    # Ensure minimum node counts.
     _ensure_min_nodes(graph, paper_ids, "author", MIN_AUTHOR_NODES, "written_by")
     _ensure_min_nodes(graph, paper_ids, "org", MIN_ORG_NODES, "author_affiliated_with")
     _ensure_min_nodes(graph, paper_ids, "venue", MIN_VENUE_NODES, "published_in")
 
-    # Graph metadata
     graph.name = target_name
-
     return graph
 
 
