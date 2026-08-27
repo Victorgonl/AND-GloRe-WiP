@@ -1,6 +1,7 @@
 import argparse
+import logging
 import random
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,53 @@ import torch
 import yaml
 
 AVERAGE_NAME = "- AVERAGE -"
+
+
+class LoggerFormatter(logging.Formatter):
+    def format(self, record):
+        log = record.getMessage()
+
+        if getattr(record, "show_time", False):
+            log = f"[{self.formatTime(record, '%Y-%m-%d %H:%M:%S')}] {log}"
+        if getattr(record, "break_line", False):
+            log = log + "\n"
+
+        log = record.getMessage()
+        if record.levelno == logging.INFO:
+            log = log
+        if record.levelno == logging.WARNING:
+            log = f"[WARNING] {log}"
+        if record.levelno >= logging.ERROR:
+            log = f"[ERROR] {log}"
+
+        if getattr(record, "print", False):
+            print(log)
+
+        return log
+
+
+class Logger:
+    def __init__(
+        self,
+        log_file: str | None = None,
+    ):
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.handlers.clear()
+
+        formatter = LoggerFormatter()
+
+        # console = logging.StreamHandler()
+        # console.setFormatter(formatter)
+
+        if log_file is None:
+            log_file = "logs/temp.log"
+
+        file = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        file.setFormatter(formatter)
+
+        # self.logger.addHandler(console)
+        self.logger.addHandler(file)
 
 
 def set_seed(seed):
@@ -75,9 +123,9 @@ def parse_args() -> argparse.Namespace:
 
 def save_csv_results(
     results: dict,
-    results_csv_path: Optional[str],
+    results_csv_path: str | None,
     outputs: dict,
-    output_file: Optional[str],
+    output_file: str | None,
 ) -> pd.DataFrame:
 
     if output_file is not None:
@@ -125,3 +173,17 @@ def save_csv_results(
         csv_df.to_csv(results_csv_path, index=False, float_format="%.2f")
 
     return summary_df
+
+
+def load_dataset(path: str, min_papers_per_label: int = 0) -> pd.DataFrame:
+    """Load the dataset from a CSV file and filter rows based on minimum papers per label."""
+    df = pd.read_csv(path)
+    df = df[df["label"].map(df["label"].value_counts()) >= min_papers_per_label]
+
+    if min_papers_per_label > 0:
+        # remove names with only 1 unique label
+        name_counts = df.groupby("name")["label"].nunique()
+        valid_names = name_counts[name_counts > 1].index
+        df = df[df["name"].isin(valid_names)]
+
+    return df

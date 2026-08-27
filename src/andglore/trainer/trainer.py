@@ -4,16 +4,15 @@ from datetime import timedelta
 import torch
 from tqdm import tqdm
 
-from andglore.evaluation.evaluate import adaptative_hac_evaluation
+from andglore.evaluation.evaluate import adaptative_hac_evaluation, hdbscan_evaluation
 from andglore.model.andglore import ANDGloRe
 from andglore.model.augmentation import (
     get_augmented_adjacencies,
     get_augmented_features,
 )
 from andglore.model.networks import create_bipartite_matrix, get_nodes
-from andglore.trainer.logger import Logger
 from andglore.trainer.training_args import TrainingArgs
-from andglore.utils import AVERAGE_NAME, save_csv_results, set_seed
+from andglore.utils import AVERAGE_NAME, Logger, save_csv_results, set_seed
 
 
 def run_andglore_experiment(
@@ -271,15 +270,23 @@ def run_andglore_experiment(
             runtime = int(time.time() - start_time)
 
             # Calculate evaluation metrics
-            pred, _score, _distance, (pP, pR, pF1), (bP, bR, bF1), ari = (
-                adaptative_hac_evaluation(
+            if training_args.clustering_algorithm == "hac":
+                evaluation = adaptative_hac_evaluation(
                     embeddings=model.refined_embeddings,  # type: ignore
                     paper_labels=paper_labels,
                     min_distance_threshold=training_args.min_distance_threshold,
                     max_distance_threshold=training_args.max_distance_threshold,
                     step=training_args.step,
                 )
-            )
+            else:
+                evaluation = hdbscan_evaluation(
+                    embeddings=model.refined_embeddings,  # type: ignore
+                    paper_labels=paper_labels,
+                    cluster_selection_epsilon=training_args.db_eps,
+                    min_cluster_size=training_args.db_min,
+                )
+
+            pred, _score, _distance, (pP, pR, pF1), (bP, bR, bF1), ari = evaluation
 
             # Logging
             logger.info(f"Results for name: {name}", extra={"show_time": True})
