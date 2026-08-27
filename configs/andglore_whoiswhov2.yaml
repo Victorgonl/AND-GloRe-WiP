@@ -10,7 +10,7 @@ outputs_path: "outputs/andglore_whoiswhov2.pt"
 
 selected_names: null 
 
-max_org_affiliation: 5
+max_org_affiliation: null
 
 training_args:
   seeds: [2026]

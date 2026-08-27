@@ -1,6 +1,5 @@
 import time
 from datetime import timedelta
-from typing import Optional
 
 import torch
 from tqdm import tqdm
@@ -21,9 +20,9 @@ def run_andglore_experiment(
     dataset_name: str,
     networks: list,
     training_args: TrainingArgs,
-    log_file_path: Optional[str] = None,
-    results_csv_path: Optional[str] = None,
-    outputs_path: Optional[str] = None,
+    log_file_path: str | None = None,
+    results_csv_path: str | None = None,
+    outputs_path: str | None = None,
     selected_names=None,
 ):
     # Logging
@@ -32,13 +31,13 @@ def run_andglore_experiment(
     # Logging
     logger.info("Starting Experiment", extra={"show_time": True, "break_line": True})
     logger.info(f"Experiments Args:{training_args}", extra={"break_line": True})
-    
+
     networks_by_name = {graph.graph["name"]: graph for graph in networks}
 
     # Prepare names
     names = selected_names
     if names is None:
-        names = sorted(list(networks_by_name))
+        names = sorted(networks_by_name)
         # Logging
         logger.info(
             f"Running on all groups for dataset '{dataset_name}'",
@@ -59,20 +58,18 @@ def run_andglore_experiment(
     outputs = {}
 
     for run, seed in enumerate(loop):
-
         results[seed] = {}
         outputs[seed] = {}
 
         live_pf1 = 0.0
 
         for name_index, name in enumerate(names):
-
             # Seed per name, so results are name deterministic
             set_seed(seed=seed)
 
             # Logging
             logger.info(
-                f"Run {run}/{len(loop)} - Name {name_index}/{len(names)}: {name} - Avg. F1: {(live_pf1/(name_index+1)):.4f}",
+                f"Run {run}/{len(loop)} - Name {name_index}/{len(names)}: {name} - Avg. F1: {(live_pf1 / (name_index + 1)):.4f}",
                 extra={"show_time": True},
             )
 
@@ -206,14 +203,28 @@ def run_andglore_experiment(
             aug_pp_adj_paoap = aug_pp_adj_paoap.to(training_args.device)
 
             # Convert bipartite to tensor
-            bipartite_pa = torch.from_numpy(bipartite_pa.toarray()).to(training_args.device)  # type: ignore
-            bipartite_pv = torch.from_numpy(bipartite_pv.toarray()).to(training_args.device)  # type: ignore
-            bipartite_po = torch.from_numpy(bipartite_po.toarray()).to(training_args.device)  # type: ignore
-            bipartite_ao = torch.from_numpy(bipartite_ao.toarray()).to(training_args.device)  # type: ignore
-            bipartite_pao = torch.from_numpy(bipartite_pao.toarray()).to(training_args.device)  # type: ignore
+            bipartite_pa = torch.from_numpy(bipartite_pa.toarray()).to(
+                training_args.device
+            )  # type: ignore
+            bipartite_pv = torch.from_numpy(bipartite_pv.toarray()).to(
+                training_args.device
+            )  # type: ignore
+            bipartite_po = torch.from_numpy(bipartite_po.toarray()).to(
+                training_args.device
+            )  # type: ignore
+            bipartite_ao = torch.from_numpy(bipartite_ao.toarray()).to(
+                training_args.device
+            )  # type: ignore
+            bipartite_pao = torch.from_numpy(bipartite_pao.toarray()).to(
+                training_args.device
+            )  # type: ignore
 
             # Create optimizer
-            optimizer = torch.optim.Adam(model.parameters(), lr=training_args.lr, weight_decay=training_args.l2_coef)  # type: ignore
+            optimizer = torch.optim.Adam(
+                model.parameters(),
+                lr=training_args.lr,
+                weight_decay=training_args.l2_coef,
+            )  # type: ignore
 
             model.train()
 
@@ -247,9 +258,9 @@ def run_andglore_experiment(
                         name=f"{name_index}/{len(names)}:{name}",
                         epoch=f"{epoch}/{training_args.epochs}",
                         loss=loss.item(),
-                        run=f"{run+1}/{len(training_args.seeds)}",
+                        run=f"{run + 1}/{len(training_args.seeds)}",
                         seed=seed,
-                        avg_pf1=f"{(live_pf1/(name_index+1)):.2%}",
+                        avg_pf1=f"{(live_pf1 / (name_index + 1)):.2%}",
                     )
             except Exception as e:
                 # Logging
@@ -260,7 +271,7 @@ def run_andglore_experiment(
             runtime = int(time.time() - start_time)
 
             # Calculate evaluation metrics
-            pred, score, distance, (pP, pR, pF1), (bP, bR, bF1), ari = (
+            pred, _score, _distance, (pP, pR, pF1), (bP, bR, bF1), ari = (
                 adaptative_hac_evaluation(
                     embeddings=model.refined_embeddings,  # type: ignore
                     paper_labels=paper_labels,
@@ -326,3 +337,5 @@ def run_andglore_experiment(
         extra={"print": True},
     )
     logger.info("", extra={"break_line": True, "print": True})
+
+    return results_df

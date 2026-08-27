@@ -1,21 +1,20 @@
 import ast
 import math
-from importlib import import_module
 from itertools import zip_longest
-from pathlib import Path
-from typing import Optional
 
 import matplotlib
 import matplotlib.colors
 import matplotlib.lines
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import networkx as nx
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import scipy.sparse as sp
 import seaborn as sns
 import torch
+from matplotlib import ticker
+from matplotlib.axes import Axes
 from sklearn.manifold import TSNE
 
 # ── Plotting constants ──────────────────────────────────────────────────────
@@ -84,6 +83,48 @@ FIGSIZE_GRAPH = (10, 10)
 # ── Internal helpers ────────────────────────────────────────────────────────
 
 
+def _to_numpy(x):
+    if torch.is_tensor(x):
+        x = x.detach().cpu()
+        return x.to_dense().numpy() if x.is_sparse else x.numpy()
+    if sp.issparse(x):
+        return x.toarray()
+    return np.asarray(x)
+
+
+def _parse_list(value):
+    return value if isinstance(value, list) else ast.literal_eval(value)
+
+
+def _select_names(df, selected_names):
+    return df if selected_names is None else df[df["name"].isin(selected_names)]
+
+
+def _annotate_bars(ax, bars, fontsize=8):
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            height,
+            f"{int(height)}",
+            ha="center",
+            va="bottom",
+            fontsize=fontsize,
+        )
+
+
+def _finish_plotly(fig, output_file=None, show=False):
+    if output_file:
+        output_file = str(output_file)
+        if output_file.lower().endswith(".html"):
+            fig.write_html(output_file)
+        else:
+            fig.write_image(output_file)
+    elif show:
+        fig.show()
+    return fig
+
+
 def _legend_ncol(n_items: int) -> int:
     """Column count that keeps the legend to at most LEGEND_TARGET_ROWS rows."""
     return max(1, min(LEGEND_MAX_NCOL, math.ceil(n_items / LEGEND_TARGET_ROWS)))
@@ -132,10 +173,8 @@ def plot_embeddings(
     """
     Generates a t-SNE plot for a given ambiguous name.
     """
-    if isinstance(X, torch.Tensor):
-        X = X.cpu().numpy()
-    if isinstance(y, torch.Tensor):
-        y = y.cpu().numpy()
+    X = _to_numpy(X)
+    y = _to_numpy(y)
 
     # ---- t-SNE ----
     perp = min(TSNE_PERPLEXITY, len(X) - 1)
@@ -151,7 +190,7 @@ def plot_embeddings(
     palette = _build_palette(unique_labels)
 
     # ---- scatter ----
-    fig, ax = plt.subplots(figsize=figsize)
+    _fig, ax = plt.subplots(figsize=figsize)
     sns.scatterplot(
         x=coords[:, 0],
         y=coords[:, 1],
@@ -183,13 +222,13 @@ def plot_embeddings(
                 fontweight="bold",
                 color=palette[label],
                 alpha=LABEL_TEXT_ALPHA,
-                bbox=dict(
-                    facecolor="none",
-                    edgecolor=palette[label],
-                    boxstyle="round,pad=0.2",
-                    linewidth=1,
-                    alpha=LABEL_TEXT_ALPHA,
-                ),
+                bbox={
+                    "facecolor": "none",
+                    "edgecolor": palette[label],
+                    "boxstyle": "round,pad=0.2",
+                    "linewidth": 1,
+                    "alpha": LABEL_TEXT_ALPHA,
+                },
                 ha="center",
                 va="center",
                 zorder=10,
@@ -273,7 +312,6 @@ def plot_embeddings(
 
     if output_file:
         plt.savefig(output_file, bbox_inches="tight", dpi=150)
-        print(f"Saved plot to {output_file}")
         plt.close()
     else:
         plt.show()
@@ -283,7 +321,7 @@ def plot_hetero_graph(
     G: nx.Graph,
     output_file=None,
     show_id_labels: bool = False,
-    k: Optional[float] = SPRING_K_DEFAULT,
+    k: float | None = SPRING_K_DEFAULT,
     figsize=FIGSIZE_GRAPH,
     title=None,
 ):
@@ -331,10 +369,6 @@ def plot_hetero_graph(
     for key in edge_type_counts:
         edge_type_counts[key] //= 2
 
-    if n_papers == 0:
-        print(f"Graph for {G.graph.get('name', 'unknown')} is empty. Skipping plot.")
-        return
-
     # ---- build an undirected layout graph ----
     layout_G = nx.Graph()
     layout_G.add_nodes_from(G.nodes())
@@ -352,7 +386,7 @@ def plot_hetero_graph(
     paper_colors = [palette[lbl] for lbl in y]
 
     # ---- draw ----
-    fig, ax = plt.subplots(figsize=figsize)
+    _fig, ax = plt.subplots(figsize=figsize)
 
     nx.draw_networkx_edges(
         layout_G, pos, alpha=EDGE_ALPHA, edge_color=GRAPH_EDGE_COLOR, ax=ax
@@ -434,13 +468,13 @@ def plot_hetero_graph(
                 fontweight="bold",
                 color=palette[label],
                 alpha=LABEL_TEXT_ALPHA,
-                bbox=dict(
-                    facecolor="none",
-                    edgecolor=palette[label],
-                    boxstyle="round,pad=0.2",
-                    linewidth=1,
-                    alpha=LABEL_TEXT_ALPHA,
-                ),
+                bbox={
+                    "facecolor": "none",
+                    "edgecolor": palette[label],
+                    "boxstyle": "round,pad=0.2",
+                    "linewidth": 1,
+                    "alpha": LABEL_TEXT_ALPHA,
+                },
                 ha="center",
                 va="center",
                 zorder=10,
@@ -604,7 +638,6 @@ def plot_hetero_graph(
             bbox_extra_artists=(legend_types, legend_ids),
             bbox_inches="tight",
         )
-        print(f"Hetero graph plot saved to: {output_file}")
         plt.close()
     else:
         plt.show()
@@ -614,7 +647,7 @@ def plot_embeddings_plotly(
     X,
     y,
     name: str,
-    paper_ids: Optional[list] = None,
+    paper_ids: list | None = None,
     output_file=None,
     show_id_labels: bool = False,
     figsize=FIGSIZE_EMBEDDINGS,
@@ -638,21 +671,8 @@ def plot_embeddings_plotly(
     -------
     fig            : plotly.graph_objects.Figure
     """
-    try:
-        plotly_go = import_module("plotly.graph_objects")
-    except ImportError as exc:
-        raise ImportError(
-            "plotly is required for plot_embeddings_plotly. Install with `pip install plotly`."
-        ) from exc
-
-    if isinstance(X, torch.Tensor):
-        X = X.cpu().numpy()
-    if isinstance(y, torch.Tensor):
-        y = y.cpu().numpy()
-
-    if len(X) == 0:
-        print(f"Feature matrix for {name} is empty. Skipping plot.")
-        return None
+    X = _to_numpy(X)
+    y = _to_numpy(y)
 
     # ---- t-SNE ----
     perp = min(TSNE_PERPLEXITY, len(X) - 1)
@@ -668,7 +688,7 @@ def plot_embeddings_plotly(
     palette = _build_palette(unique_labels)
     label2count = dict(zip(unique_labels, label_counts))
 
-    fig = plotly_go.Figure()
+    fig = go.Figure()
 
     # Plotly marker size is diameter in px; calculate from Matplotlib area approx
     plotly_marker_size = math.sqrt(SCATTER_POINT_SIZE) * 1.5
@@ -676,8 +696,6 @@ def plot_embeddings_plotly(
     # ---- Scatter ----
     for lbl in unique_labels:
         mask = y == lbl
-        if not mask.any():
-            continue
 
         # Get the original indices of the points for this label
         indices = np.where(mask)[0]
@@ -689,17 +707,17 @@ def plot_embeddings_plotly(
             names = [str(idx) for idx in indices]
 
         fig.add_trace(
-            plotly_go.Scatter(
+            go.Scatter(
                 x=coords[mask, 0],
                 y=coords[mask, 1],
                 mode="markers",
                 text=names,
-                marker=dict(
-                    size=plotly_marker_size,
-                    color=matplotlib.colors.to_hex(palette[lbl]),
-                    opacity=SCATTER_ALPHA,
-                    line=dict(color=SCATTER_EDGE_COLOR, width=SCATTER_LINEWIDTH),
-                ),
+                marker={
+                    "size": plotly_marker_size,
+                    "color": matplotlib.colors.to_hex(palette[lbl]),
+                    "opacity": SCATTER_ALPHA,
+                    "line": {"color": SCATTER_EDGE_COLOR, "width": SCATTER_LINEWIDTH},
+                },
                 name=f"Paper label {lbl} ({label2count[lbl]})",
                 hovertemplate=(
                     f"type=paper<br>node=%{{text}}<br>label={lbl}<br>count={label2count[lbl]}<extra></extra>"
@@ -723,10 +741,10 @@ def plot_embeddings_plotly(
                 y=float(text_pos[1]),
                 text=str(lbl),
                 showarrow=False,
-                font=dict(
-                    size=ID_LABEL_FONTSIZE,
-                    color=matplotlib.colors.to_hex(palette[lbl]),
-                ),
+                font={
+                    "size": ID_LABEL_FONTSIZE,
+                    "color": matplotlib.colors.to_hex(palette[lbl]),
+                },
                 bordercolor=matplotlib.colors.to_hex(palette[lbl]),
                 borderpad=2,
                 bgcolor="rgba(0,0,0,0)",
@@ -750,64 +768,52 @@ def plot_embeddings_plotly(
     height_px = int(figsize[1] * 100)
 
     fig.update_layout(
-        title=dict(text=f"Ambiguous Name: {name}", font=dict(size=14)),
+        title={"text": f"Ambiguous Name: {name}", "font": {"size": 14}},
         width=width_px,
         height=height_px,
         template="plotly_white",
         showlegend=True,
-        legend=dict(
-            title="Author ID",
-            orientation="h",
-            yanchor="bottom",
-            y=-0.25,
-            xanchor="left",
-            x=0,
-            font=dict(size=10),
-        ),
-        margin=dict(l=10, r=10, t=40, b=90),
+        legend={
+            "title": "Author ID",
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": -0.25,
+            "xanchor": "left",
+            "x": 0,
+            "font": {"size": 10},
+        },
+        margin={"l": 10, "r": 10, "t": 40, "b": 90},
         annotations=[
-            dict(
-                x=0,
-                y=-0.15,
-                xref="paper",
-                yref="paper",
-                text=stats_text,
-                showarrow=False,
-                align="left",
-                xanchor="left",
-                font=dict(size=10),
-            )
+            {
+                "x": 0,
+                "y": -0.15,
+                "xref": "paper",
+                "yref": "paper",
+                "text": stats_text,
+                "showarrow": False,
+                "align": "left",
+                "xanchor": "left",
+                "font": {"size": 10},
+            }
         ],
     )
 
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)
 
-    # ---- save / show ----
-    if output_file:
-        output_path = str(output_file)
-        if output_path.lower().endswith(".html"):
-            fig.write_html(output_path)
-            print(f"Embeddings plotly figure saved to: {output_path}")
-        else:
-            fig.write_image(output_path)
-            print(f"Embeddings plotly image saved to: {output_path}")
-    elif show:
-        fig.show()
-
-    return fig
+    return _finish_plotly(fig, output_file, show)
 
 
 def plot_hetero_graph_plotly(
     G: nx.Graph,
     output_file=None,
     show_id_labels: bool = False,
-    k: Optional[float] = SPRING_K_DEFAULT,
+    k: float | None = SPRING_K_DEFAULT,
     figsize=FIGSIZE_GRAPH,
     title=None,
     show: bool = False,
     show_soft_links: bool = False,
-    ignore_node_ids: Optional[list] = None,
+    ignore_node_ids: list | None = None,
 ):
     """
     Plot a heterogeneous Sauthor-name-disambiguation graph using Plotly.
@@ -830,13 +836,6 @@ def plot_hetero_graph_plotly(
         A `plotly.graph_objects.Figure`.
     """
 
-    try:
-        plotly_go = import_module("plotly.graph_objects")
-    except ImportError as exc:
-        raise ImportError(
-            "plotly is required for plot_hetero_graph_plotly. Install with `pip install plotly`."
-        ) from exc
-
     ignored_nodes = set(ignore_node_ids or [])
     if ignored_nodes:
         G = G.subgraph(node for node in G if node not in ignored_nodes)
@@ -851,10 +850,6 @@ def plot_hetero_graph_plotly(
     n_authors = len(author_nodes)
     n_venues = len(venue_nodes)
     n_orgs = len(org_nodes)
-
-    if n_papers == 0:
-        print(f"Graph for {G.graph.get('name', 'unknown')} is empty. Skipping plot.")
-        return None
 
     # ---- edge-type counts for legend text ----
     edge_type_counts = {"P-A": 0, "P-O": 0, "P-V": 0, "A-O": 0}
@@ -919,7 +914,7 @@ def plot_hetero_graph_plotly(
     plotly_node_size_other = 6
     plotly_node_size_paper = 8
 
-    fig = plotly_go.Figure()
+    fig = go.Figure()
 
     # ---- soft inferred edges ----
     if show_soft_links and len(soft_edges) > 0:
@@ -934,15 +929,15 @@ def plot_hetero_graph_plotly(
             soft_y.extend([y0, y1, None])
 
         fig.add_trace(
-            plotly_go.Scatter(
+            go.Scatter(
                 x=soft_x,
                 y=soft_y,
                 mode="lines",
-                line=dict(
-                    color="rgba(255,0,0,0.35)",
-                    width=1,
-                    dash="dot",
-                ),
+                line={
+                    "color": "rgba(255,0,0,0.35)",
+                    "width": 1,
+                    "dash": "dot",
+                },
                 hoverinfo="skip",
                 name=f"Soft A-O links ({len(soft_edges)})",
             )
@@ -958,11 +953,11 @@ def plot_hetero_graph_plotly(
         edge_y.extend([y0, y1, None])
 
     fig.add_trace(
-        plotly_go.Scatter(
+        go.Scatter(
             x=edge_x,
             y=edge_y,
             mode="lines",
-            line=dict(color=GRAPH_EDGE_COLOR, width=1),
+            line={"color": GRAPH_EDGE_COLOR, "width": 1},
             opacity=EDGE_ALPHA,
             hoverinfo="skip",
             name=(
@@ -984,19 +979,19 @@ def plot_hetero_graph_plotly(
         names = [str(n) for n in nodelist]
         degrees = [layout_G.degree(n) for n in nodelist]
         fig.add_trace(
-            plotly_go.Scatter(
+            go.Scatter(
                 x=xs,
                 y=ys,
                 mode="markers",
                 text=names,
                 customdata=degrees,
-                marker=dict(
-                    size=size,
-                    color=color,
-                    opacity=alpha,
-                    symbol=symbol,
-                    line=dict(color=edge_color, width=edge_width),
-                ),
+                marker={
+                    "size": size,
+                    "color": color,
+                    "opacity": alpha,
+                    "symbol": symbol,
+                    "line": {"color": edge_color, "width": edge_width},
+                },
                 name=f"{node_name} ({len(nodelist)})",
                 hovertemplate=(
                     f"type={node_name.lower()}<br>node=%{{text}}<br>degree=%{{customdata}}<extra></extra>"
@@ -1046,19 +1041,19 @@ def plot_hetero_graph_plotly(
         names = [str(n) for n in label_nodes]
         degrees = [layout_G.degree(n) for n in label_nodes]
         fig.add_trace(
-            plotly_go.Scatter(
+            go.Scatter(
                 x=xs,
                 y=ys,
                 mode="markers",
                 text=names,
                 customdata=degrees,
-                marker=dict(
-                    size=plotly_node_size_paper,
-                    color=matplotlib.colors.to_hex(palette[lbl]),
-                    opacity=SCATTER_ALPHA,
-                    symbol="circle",
-                    line=dict(color=SCATTER_EDGE_COLOR, width=SCATTER_LINEWIDTH),
-                ),
+                marker={
+                    "size": plotly_node_size_paper,
+                    "color": matplotlib.colors.to_hex(palette[lbl]),
+                    "opacity": SCATTER_ALPHA,
+                    "symbol": "circle",
+                    "line": {"color": SCATTER_EDGE_COLOR, "width": SCATTER_LINEWIDTH},
+                },
                 name=f"Paper label {lbl} ({label2count[lbl]})",
                 hovertemplate=(
                     f"type=paper<br>node=%{{text}}<br>label={lbl}<br>count={label2count[lbl]}<br>degree=%{{customdata}}"
@@ -1083,10 +1078,10 @@ def plot_hetero_graph_plotly(
                 y=float(text_pos[1]),
                 text=str(lbl),
                 showarrow=False,
-                font=dict(
-                    size=ID_LABEL_FONTSIZE,
-                    color=matplotlib.colors.to_hex(palette[lbl]),
-                ),
+                font={
+                    "size": ID_LABEL_FONTSIZE,
+                    "color": matplotlib.colors.to_hex(palette[lbl]),
+                },
                 bordercolor=matplotlib.colors.to_hex(palette[lbl]),
                 borderpad=2,
                 bgcolor="rgba(0,0,0,0)",
@@ -1098,82 +1093,59 @@ def plot_hetero_graph_plotly(
     width_px = int(figsize[0] * 100)
     height_px = int(figsize[1] * 100)
     fig.update_layout(
-        title=dict(text=plot_title, font=dict(size=12)),
+        title={"text": plot_title, "font": {"size": 12}},
         width=width_px,
         height=height_px,
         template="plotly_white",
         showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.25,
-            xanchor="left",
-            x=0,
-            font=dict(size=10),
-        ),
-        margin=dict(l=10, r=10, t=40, b=90),
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": -0.25,
+            "xanchor": "left",
+            "x": 0,
+            "font": {"size": 10},
+        },
+        margin={"l": 10, "r": 10, "t": 40, "b": 90},
         annotations=[
-            dict(
-                x=0,
-                y=-0.15,
-                xref="paper",
-                yref="paper",
-                text=(
+            {
+                "x": 0,
+                "y": -0.15,
+                "xref": "paper",
+                "yref": "paper",
+                "text": (
                     f"Nodes: Paper={n_papers}, Author={n_authors}, Org={n_orgs}, Venue={n_venues}"
                 ),
-                showarrow=False,
-                align="left",
-                xanchor="left",
-                font=dict(size=10),
-            )
+                "showarrow": False,
+                "align": "left",
+                "xanchor": "left",
+                "font": {"size": 10},
+            }
         ],
     )
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)
 
-    # ---- save / show ----
-    if output_file:
-        output_path = str(output_file)
-        if output_path.lower().endswith(".html"):
-            fig.write_html(output_path)
-            print(f"Hetero graph plotly figure saved to: {output_path}")
-        else:
-            fig.write_image(output_path)
-            print(f"Hetero graph plotly image saved to: {output_path}")
-    elif show:
-        fig.show()
-
-    return fig
+    return _finish_plotly(fig, output_file, show)
 
 
 def plot_homo_graph_plotly(
     G: nx.Graph,
     output_file=None,
     show_id_labels: bool = False,
-    k: Optional[float] = SPRING_K_DEFAULT,
+    k: float | None = SPRING_K_DEFAULT,
     figsize=FIGSIZE_GRAPH,
     title=None,
     show: bool = False,
-    ignore_node_ids: Optional[list] = None,
+    ignore_node_ids: list | None = None,
 ):
     """Plot a homogeneous paper graph using Plotly."""
-
-    try:
-        plotly_go = import_module("plotly.graph_objects")
-    except ImportError as exc:
-        raise ImportError(
-            "plotly is required for plot_homo_graph_plotly. Install with `pip install plotly`."
-        ) from exc
 
     ignored_nodes = set(ignore_node_ids or [])
     if ignored_nodes:
         G = G.subgraph(node for node in G if node not in ignored_nodes)
 
     nodes = list(G.nodes())
-    if not nodes:
-        print(f"Graph for {G.graph.get('name', 'unknown')} is empty. Skipping plot.")
-        return None
-
     layout_G = nx.Graph()
     layout_G.add_nodes_from(nodes)
     layout_G.add_edges_from(G.edges())
@@ -1186,7 +1158,7 @@ def plot_homo_graph_plotly(
     palette = _build_palette(unique_labels)
     label2count = dict(zip(unique_labels, label_counts))
 
-    fig = plotly_go.Figure()
+    fig = go.Figure()
 
     edge_x = []
     edge_y = []
@@ -1197,11 +1169,11 @@ def plot_homo_graph_plotly(
         edge_y.extend([y0, y1, None])
 
     fig.add_trace(
-        plotly_go.Scatter(
+        go.Scatter(
             x=edge_x,
             y=edge_y,
             mode="lines",
-            line=dict(color=GRAPH_EDGE_COLOR, width=1),
+            line={"color": GRAPH_EDGE_COLOR, "width": 1},
             opacity=EDGE_ALPHA,
             hoverinfo="skip",
             name=f"Edges ({layout_G.number_of_edges()})",
@@ -1213,19 +1185,19 @@ def plot_homo_graph_plotly(
             node for node in nodes if G.nodes[node].get("label", -1) == label
         ]
         fig.add_trace(
-            plotly_go.Scatter(
+            go.Scatter(
                 x=[pos[node][0] for node in label_nodes],
                 y=[pos[node][1] for node in label_nodes],
                 mode="markers",
                 text=[str(node) for node in label_nodes],
                 customdata=[layout_G.degree(node) for node in label_nodes],
-                marker=dict(
-                    size=8,
-                    color=matplotlib.colors.to_hex(palette[label]),
-                    opacity=SCATTER_ALPHA,
-                    symbol="circle",
-                    line=dict(color=SCATTER_EDGE_COLOR, width=SCATTER_LINEWIDTH),
-                ),
+                marker={
+                    "size": 8,
+                    "color": matplotlib.colors.to_hex(palette[label]),
+                    "opacity": SCATTER_ALPHA,
+                    "symbol": "circle",
+                    "line": {"color": SCATTER_EDGE_COLOR, "width": SCATTER_LINEWIDTH},
+                },
                 name=f"Paper label {label} ({label2count[label]})",
                 hovertemplate=(
                     f"type=paper<br>node=%{{text}}<br>label={label}"
@@ -1247,10 +1219,10 @@ def plot_homo_graph_plotly(
                 y=float(text_pos[1]),
                 text=str(label),
                 showarrow=False,
-                font=dict(
-                    size=ID_LABEL_FONTSIZE,
-                    color=matplotlib.colors.to_hex(palette[label]),
-                ),
+                font={
+                    "size": ID_LABEL_FONTSIZE,
+                    "color": matplotlib.colors.to_hex(palette[label]),
+                },
                 bordercolor=matplotlib.colors.to_hex(palette[label]),
                 borderpad=2,
                 bgcolor="rgba(0,0,0,0)",
@@ -1259,37 +1231,37 @@ def plot_homo_graph_plotly(
 
     plot_title = str(G.graph.get("name", "")) if title is None else title
     fig.update_layout(
-        title=dict(text=plot_title, font=dict(size=12)),
+        title={"text": plot_title, "font": {"size": 12}},
         width=int(figsize[0] * 100),
         height=int(figsize[1] * 100),
         template="plotly_white",
         showlegend=True,
-        legend=dict(
-            title="Author ID",
-            orientation="h",
-            yanchor="bottom",
-            y=-0.25,
-            xanchor="left",
-            x=0,
-            font=dict(size=10),
-        ),
-        margin=dict(l=10, r=10, t=40, b=90),
+        legend={
+            "title": "Author ID",
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": -0.25,
+            "xanchor": "left",
+            "x": 0,
+            "font": {"size": 10},
+        },
+        margin={"l": 10, "r": 10, "t": 40, "b": 90},
         annotations=list(fig.layout.annotations)
         + [
-            dict(
-                x=0,
-                y=-0.15,
-                xref="paper",
-                yref="paper",
-                text=(
+            {
+                "x": 0,
+                "y": -0.15,
+                "xref": "paper",
+                "yref": "paper",
+                "text": (
                     f"Nodes: {layout_G.number_of_nodes()} | "
                     f"Edges: {layout_G.number_of_edges()}"
                 ),
-                showarrow=False,
-                align="left",
-                xanchor="left",
-                font=dict(size=10),
-            )
+                "showarrow": False,
+                "align": "left",
+                "xanchor": "left",
+                "font": {"size": 10},
+            }
         ],
     )
     fig.update_xaxes(visible=False)
@@ -1299,36 +1271,18 @@ def plot_homo_graph_plotly(
         output_path = str(output_file)
         if output_path.lower().endswith(".html"):
             fig.write_html(output_path)
-            print(f"Homogeneous graph Plotly figure saved to: {output_path}")
         else:
             fig.write_image(output_path)
-            print(f"Homogeneous graph Plotly image saved to: {output_path}")
     elif show:
         fig.show()
 
     return fig
 
 
-def _to_dense_numpy(x):
-    if torch.is_tensor(x):
-        x = x.cpu()
-        if x.is_sparse:
-            x = x.to_dense()
-        return x.numpy()
-
-    if sp.issparse(x):
-        return x.toarray()
-
-    return x
-
-
 def _paper_palette(labels, max_nodes):
-    labels_np = labels.cpu().numpy() if torch.is_tensor(labels) else np.asarray(labels)
-    labels_np = labels_np[:max_nodes]
-    unique_labels = np.unique(labels_np)
-    palette = _build_palette(unique_labels)
-    paper_colors = [palette[lbl] for lbl in labels_np]
-    return paper_colors
+    labels = _to_numpy(labels)[:max_nodes]
+    palette = _build_palette(np.unique(labels))
+    return [palette[label] for label in labels]
 
 
 def _neighbor_type_from_name(name: str) -> str:
@@ -1353,7 +1307,7 @@ def visualize_metapath_graphs(metapath_adjs, labels, plot_average: bool = False)
     """Visualize paper-paper metapath graphs and optionally an averaged graph."""
 
     def build_graph_from_adj(adj):
-        adj = _to_dense_numpy(adj)
+        adj = _to_numpy(adj)
         num_nodes = adj.shape[0]
 
         G = nx.Graph()
@@ -1369,20 +1323,13 @@ def visualize_metapath_graphs(metapath_adjs, labels, plot_average: bool = False)
 
     def build_average_metapath_graph():
         names = list(metapath_adjs.names)
-        if len(names) == 0:
-            return nx.Graph(), []
-
         # Aggregate binary metapath adjacencies; average weight is in [0, 1].
-        first_adj = _to_dense_numpy(metapath_adjs[names[0]])
+        first_adj = _to_numpy(metapath_adjs[names[0]])
         num_nodes = first_adj.shape[0]
         support = np.zeros((num_nodes, num_nodes), dtype=np.float32)
 
         for name in names:
-            adj = _to_dense_numpy(metapath_adjs[name])
-            if adj.shape[0] != num_nodes or adj.shape[1] != num_nodes:
-                raise ValueError(
-                    f"Metapath {name} has shape {adj.shape}; expected ({num_nodes}, {num_nodes})."
-                )
+            adj = _to_numpy(metapath_adjs[name])
             support += (adj > 0).astype(np.float32)
 
         np.fill_diagonal(support, 0)
@@ -1406,7 +1353,7 @@ def visualize_metapath_graphs(metapath_adjs, labels, plot_average: bool = False)
     paper_colors = _paper_palette(labels, len(labels))
 
     num_cols = max(1, len(metapath_adjs.names) + (1 if plot_average else 0))
-    fig, axes = plt.subplots(1, num_cols, figsize=(4 * num_cols, 4))
+    _fig, axes = plt.subplots(1, num_cols, figsize=(4 * num_cols, 4))
     axes = np.array(axes).reshape(1, num_cols)
 
     for idx, name in enumerate(metapath_adjs.names):
@@ -1484,16 +1431,11 @@ def visualize_metapath_graphs(metapath_adjs, labels, plot_average: bool = False)
 def visualize_neighbors_graphs(neighbor_indices, labels, max_nodes=20):
 
     def build_bipartite_graph_from_incidence(indices, name):
-        indices = _to_dense_numpy(indices)
-        if indices.ndim != 2:
-            raise ValueError(
-                f"Expected 2D incidence matrix for {name}, got shape {indices.shape}."
-            )
-
+        indices = _to_numpy(indices)
         num_papers = min(indices.shape[0], max_nodes)
         rows, cols = (indices[:num_papers, :] > 0).nonzero()
 
-        unique_cols = sorted(set(int(c) for c in cols))[:max_nodes]
+        unique_cols = sorted({int(c) for c in cols})[:max_nodes]
         col_set = set(unique_cols)
 
         neighbor_type = _neighbor_type_from_name(name)
@@ -1530,7 +1472,7 @@ def visualize_neighbors_graphs(neighbor_indices, labels, max_nodes=20):
     paper_colors = _paper_palette(labels, max_nodes)
 
     num_cols = max(1, len(neighbor_indices.names))
-    fig, axes = plt.subplots(1, num_cols, figsize=(4 * num_cols, 4))
+    _fig, axes = plt.subplots(1, num_cols, figsize=(4 * num_cols, 4))
     axes = np.array(axes).reshape(1, num_cols)
 
     for idx, name in enumerate(neighbor_indices.names):
@@ -1587,76 +1529,28 @@ def visualize_neighbors_graphs(neighbor_indices, labels, max_nodes=20):
 def plot_network_matrices(
     network_list, titles=None, ylabels=None, xlabels=None, paper_labels=None
 ):
-    """
-    Plots the sparsity pattern of a list of networks.
-    Forces all subplots to be the same width.
+    matrices = [sp.coo_matrix(_to_numpy(net)) for net in network_list]
+    _fig, axes = plt.subplots(1, len(matrices), figsize=(6 * len(matrices), 5))
+    axes = np.atleast_1d(axes)
+    labels = np.asarray(paper_labels) if paper_labels is not None else None
 
-    If paper_labels is provided, assumes a square paper-paper matrix.
-    Colors edges Green if both papers share the same label, Red if different.
-    """
-
-    network_list = [sp.coo_matrix(_to_dense_numpy(net)) for net in network_list]
-
-    num_nets = len(network_list)
-    fig, axes = plt.subplots(1, num_nets, figsize=(6 * num_nets, 5))
-    if num_nets == 1:
-        axes = [axes]
-
-    # Convert labels to a numpy array once for fast, vectorized indexing
-    if paper_labels is not None:
-        labels_array = np.array(paper_labels)
-
-    for i, (ax, matrix) in enumerate(zip(axes, network_list)):
-        if paper_labels is not None:
-            # 1. Validate the matrix is square and matches the label list length
-            assert (
-                matrix.shape[0] == matrix.shape[1]  # type: ignore
-            ), f"Matrix {i+1} must be square (P x P) when using paper_labels."
-            assert matrix.shape[0] == len(  # type: ignore
-                labels_array
-            ), f"Matrix {i+1} dimension ({matrix.shape[0]}) must match length of paper_labels ({len(labels_array)})."  # type: ignore
-
-            # 2. Convert to COO format to easily access row and column indices
-            coo_mat = matrix.tocoo()
-
-            # 3. Look up the labels for the row node and column node of every edge
-            row_labels = labels_array[coo_mat.row]
-            col_labels = labels_array[coo_mat.col]
-
-            # 4. Create boolean masks for our two conditions
-            same_mask = row_labels == col_labels
-            diff_mask = ~same_mask
-
-            # 5. Build two new sparse matrices based on those masks
-            same_mat = sp.coo_matrix(
-                (
-                    coo_mat.data[same_mask],
-                    (coo_mat.row[same_mask], coo_mat.col[same_mask]),
-                ),
-                shape=matrix.shape,
-            )
-            diff_mat = sp.coo_matrix(
-                (
-                    coo_mat.data[diff_mask],
-                    (coo_mat.row[diff_mask], coo_mat.col[diff_mask]),
-                ),
-                shape=matrix.shape,
-            )
-
-            # 6. Plot them on top of each other
-            ax.spy(same_mat, markersize=1, color="green", alpha=0.5, aspect="auto")
-            ax.spy(diff_mat, markersize=1, color="red", alpha=0.5, aspect="auto")
-
-        else:
-            # Default behavior if no labels are provided
+    for i, (ax, matrix) in enumerate(zip(axes, matrices)):
+        if labels is None:
             ax.spy(matrix, markersize=1, color="black", alpha=0.5, aspect="auto")
+        else:
+            same = labels[matrix.row] == labels[matrix.col]
+            for mask, color in [(same, "green"), (~same, "red")]:
+                part = sp.coo_matrix(
+                    (matrix.data[mask], (matrix.row[mask], matrix.col[mask])),
+                    shape=matrix.shape,
+                )
+                ax.spy(part, markersize=1, color=color, alpha=0.5, aspect="auto")
 
-        # Formatting
-        if titles and i < len(titles):
+        if titles:
             ax.set_title(titles[i], fontweight="bold")
-        if ylabels and i < len(ylabels):
+        if ylabels:
             ax.set_ylabel(ylabels[i])
-        if xlabels and i < len(xlabels):
+        if xlabels:
             ax.set_xlabel(xlabels[i])
 
     plt.tight_layout()
@@ -1664,24 +1558,46 @@ def plot_network_matrices(
 
 
 def plot_metrics(x, y_list, labels, title):
-    """
-    Plot multiple metrics on a single plot.
-    """
-    if len(y_list) != len(labels):
-        raise ValueError("y_list and labels must have the same length.")
-
     plt.figure(figsize=(8, 5))
-
     for y, label in zip(y_list, labels):
         plt.plot(x, y, marker="o", linewidth=2, label=label)
-
     plt.xlabel("Distance Threshold")
     plt.ylabel("Score")
     plt.title(title)
-    plt.grid(True, alpha=0.3)
+    plt.grid(alpha=0.3)
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+
+def _stats_text(values):
+    return (
+        f"Total: {values.sum()}\n"
+        f"Unique: {values.nunique()}\n"
+        f"Min: {values.min():.2f}\n"
+        f"Max: {values.max():.2f}\n"
+        f"Avg: {values.mean():.2f}\n"
+        f"Median: {values.median():.2f}\n"
+        f"Std: {values.std():.2f}\n"
+        # f"Q1: {values.quantile(0.25):.2f}\n"
+        # f"Q3: {values.quantile(0.75):.2f}\n"
+    ).strip()
+
+
+def _add_stats_box(ax: Axes, stats, x=0.98, y=0.95, va="top"):
+    ax.text(
+        x,
+        y,
+        stats,
+        transform=ax.transAxes,
+        ha="right",
+        va=va,
+        bbox={
+            "boxstyle": "round",
+            "facecolor": "white",
+            "alpha": 0.8,
+        },
+    )
 
 
 def plot_author_org_distribution_by_group(
@@ -1692,86 +1608,47 @@ def plot_author_org_distribution_by_group(
     figsize=(10, 5),
     title="",
 ):
-    """Plot distinct organization counts per author from ``preprocessed.csv``."""
-
-    required_columns = {"name", "authors", "orgs"}
-    missing_columns = required_columns.difference(preprocessed.columns)
-    if missing_columns:
-        raise ValueError(
-            "Preprocessed data is missing required columns: "
-            f"{sorted(missing_columns)}"
-        )
-
-    if selected_names is not None:
-        selected_names = set(selected_names)
-        preprocessed = preprocessed[preprocessed["name"].isin(selected_names)].copy()
-
-    if preprocessed.empty:
-        raise ValueError("No ambiguous-name groups were selected.")
-
-    def parse_list(value):
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            try:
-                parsed = ast.literal_eval(value)
-            except (ValueError, SyntaxError):
-                return []
-            return parsed if isinstance(parsed, list) else []
-        return []
-
+    data = _select_names(preprocessed, selected_names)
     organizations_by_author = {}
 
-    for row in preprocessed.itertuples(index=False):
-        network_name = row.name
-        authors = parse_list(row.authors)
-        organizations = parse_list(row.orgs)
+    for row in data.itertuples(index=False):
+        for author, org in zip_longest(
+            _parse_list(row.authors),
+            _parse_list(row.orgs),
+            fillvalue="",
+        ):
+            author = str(author).strip()
+            org = str(org).strip()
 
-        for author, organization in zip_longest(authors, organizations, fillvalue=""):
-            if author is None or not str(author).strip():
-                continue
+            if author and author != str(row.name).strip():
+                organizations_by_author.setdefault((row.name, author), set())
 
-            key = (network_name, str(author))
-            author_organizations = organizations_by_author.setdefault(key, set())
-            if organization is not None and str(organization).strip():
-                author_organizations.add(str(organization))
+                if org:
+                    organizations_by_author[(row.name, author)].add(org)
 
-    rows = [
-        {
-            "network": network_name,
-            "author": author,
-            "org_count": len(organizations),
-            "organizations": sorted(organizations),
-        }
-        for (network_name, author), organizations in organizations_by_author.items() if author != network_name
-    ]
-
-    author_counts = pd.DataFrame(rows)
-
-    if author_counts.empty:
-        raise ValueError("No authors were found in the selected preprocessed data.")
+    author_counts = pd.DataFrame(
+        [
+            {
+                "network": network,
+                "author": author,
+                "org_count": len(orgs),
+                "organizations": sorted(orgs),
+            }
+            for (network, author), orgs in organizations_by_author.items()
+        ]
+    )
 
     if not include_zero:
-        author_counts = author_counts[author_counts["org_count"] > 0].copy()
+        author_counts = author_counts[author_counts["org_count"] > 0]
 
-    if author_counts.empty:
-        raise ValueError(
-            "No authors remain after excluding authors without organizations."
-        )
+    overflow = f">{max_org_count}"
+    start = 0 if include_zero else 1
 
-    overflow_label = f">{max_org_count}"
-
-    categories = [
-        str(value)
-        for value in range(
-            0 if include_zero else 1,
-            max_org_count + 1,
-        )
-    ] + [overflow_label]
+    categories = [str(i) for i in range(start, max_org_count + 1)] + [overflow]
 
     author_counts["org_count_group"] = np.where(
         author_counts["org_count"] > max_org_count,
-        overflow_label,
+        overflow,
         author_counts["org_count"].astype(str),
     )
 
@@ -1782,51 +1659,152 @@ def plot_author_org_distribution_by_group(
     )
 
     distribution = (
-        author_counts.groupby(
-            "org_count_group",
-            observed=False,
-        )
+        author_counts.groupby("org_count_group", observed=False)
         .size()
         .rename("author_count")
         .reset_index()
     )
 
-    distribution["percentage"] = (
-        distribution["author_count"] / distribution["author_count"].sum() * 100
-    )
-
-    fig, ax = plt.subplots(figsize=figsize)
+    _fig, ax = plt.subplots(figsize=figsize)
 
     bars = ax.bar(
         distribution["org_count_group"].astype(str),
         distribution["author_count"],
-        color="steelblue",
         edgecolor="black",
         alpha=0.8,
     )
 
-    ax.set_xlabel("Número de diferentes organizações afiliadas a um autor.")
-    ax.set_ylabel("Número de ocorrências (agrupado por grupo ambíguo)")
-    ax.set_title(title)
+    ax.set(
+        xlabel="Number of orgs related to an author",
+        ylabel="Number of occurrences",
+        title=title,
+    )
 
     ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
-    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-    ax.grid(axis="y", which="major", alpha=0.25)
+    ax.grid(axis="y", alpha=0.25)
 
-    for bar in bars:
-        height = bar.get_height()
+    _annotate_bars(ax, bars, fontsize=9)
 
-        if height > 0:
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                height,
-                f"{int(height)}",
-                ha="center",
-                va="bottom",
-                fontsize=9,
-            )
+    _add_stats_box(
+        ax,
+        _stats_text(author_counts["org_count"]),
+    )
 
     plt.tight_layout()
     plt.show()
 
     return author_counts
+
+
+def plot_list_distribution_by_group(
+    preprocessed,
+    key,
+    selected_names=None,
+    plot_top_n: int | None = 50,
+    figsize=(15, 5),
+    title="",
+):
+    data = _select_names(preprocessed, selected_names)
+
+    values = [
+        str(value).strip()
+        for row in data.itertuples(index=False)
+        for value in _parse_list(getattr(row, key))
+        if str(value).strip()
+        and not (key == "authors" and str(value).strip() == str(row.name).strip())
+    ]
+
+    # Full distribution: used for statistics.
+    all_counts = pd.Series(values).value_counts()
+
+    # Only truncate what is displayed.
+    counts = all_counts.head(plot_top_n) if plot_top_n is not None else all_counts
+    counts = counts.rename_axis(key).reset_index(name="count")
+
+    _fig, ax = plt.subplots(figsize=figsize)
+
+    bars = ax.bar(
+        counts[key],
+        counts["count"],
+        edgecolor="black",
+        alpha=0.8,
+    )
+
+    ax.set(
+        xlabel=key.replace("_", " ").rstrip("s").title(),
+        ylabel="Number of occurrences",
+        title=title or f"{key.replace('_', ' ').title()} distribution",
+    )
+
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    ax.grid(axis="y", alpha=0.25)
+    ax.tick_params(axis="x", labelrotation=90)
+
+    _annotate_bars(ax, bars)
+
+    # Statistics always refer to the complete distribution.
+    _add_stats_box(ax, _stats_text(all_counts))
+
+    # Indicate categories omitted by plot_top_n.
+    truncated_count = len(all_counts) - len(counts)
+
+    if truncated_count > 0:
+        _add_stats_box(ax, f"+ {truncated_count:,} not shown", va="bottom", y=0.4)
+
+    plt.tight_layout()
+    plt.show()
+
+    return counts
+
+
+def plot_distribution_by_group(
+    preprocessed,
+    key,
+    selected_names=None,
+    plot_top_n: int | None = None,
+    figsize=(15, 5),
+    title="",
+):
+    data = _select_names(preprocessed, selected_names)
+
+    # Full distribution: used for statistics.
+    all_counts = data[key].astype(str).str.strip().value_counts()
+
+    # Only truncate what is displayed.
+    counts = all_counts.head(plot_top_n) if plot_top_n is not None else all_counts
+    counts = counts.rename_axis(key).reset_index(name="count")
+
+    _fig, ax = plt.subplots(figsize=figsize)
+
+    bars = ax.bar(
+        counts[key],
+        counts["count"],
+        edgecolor="black",
+        alpha=0.8,
+    )
+
+    ax.set(
+        xlabel=key.replace("_", " ").rstrip("s").title(),
+        ylabel="Number of occurrences",
+        title=title or key.replace("_", " "),
+    )
+
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    ax.grid(axis="y", alpha=0.25)
+    ax.tick_params(axis="x", labelrotation=90)
+
+    _annotate_bars(ax, bars)
+
+    # Statistics always refer to the complete distribution.
+    _add_stats_box(ax, _stats_text(all_counts))
+
+    # Indicate categories omitted by plot_top_n.
+    truncated_count = len(all_counts) - len(counts)
+
+    if truncated_count > 0:
+        _add_stats_box(ax, f"+ {truncated_count:,} not shown", va="bottom", y=0.4)
+
+    plt.tight_layout()
+    plt.show()
+
+    return counts

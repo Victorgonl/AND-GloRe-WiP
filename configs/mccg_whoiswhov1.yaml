@@ -12,7 +12,7 @@ outputs_path: "outputs/mccg_whoiswhov1.pt"
 
 selected_names: null
 
-max_org_affiliation: 5
+max_org_affiliation: null
 
 training_args:
   seeds: [2026]

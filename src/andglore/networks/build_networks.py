@@ -1,8 +1,9 @@
 import ast
 import os
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, Literal, Optional
+from typing import Any, Literal
 
 import networkx as nx
 import pandas as pd
@@ -118,10 +119,10 @@ def _build_network(
     split: str,
     dataset_name: str,
     embeddings: dict[Any, torch.Tensor],
-    max_orgs_per_author: Optional[int] = None,
-    max_author_paper_ratio: Optional[float] = None,
-    ignore_authors: Optional[list[str]] = None,
-    max_org_affiliation: Optional[int] = None,
+    max_orgs_per_author: int | None = None,
+    max_author_paper_ratio: float | None = None,
+    ignore_authors: list[str] | None = None,
+    max_org_affiliation: int | None = None,
 ) -> nx.Graph:
     graph = nx.Graph(name=target_name, split=split, dataset=dataset_name)
     papers: list[tuple[Any, int, int]] = []
@@ -326,16 +327,16 @@ def _build_network(
 def build_ambiguous_networks(
     dataset_name: str,
     preprocessed: pd.DataFrame,
-    embeddings: Dict[Any, torch.Tensor],
-    save_folder: Optional[str] = None,
-    logs_file: Optional[str] = None,
-    selected_names: Optional[list[str]] = None,
-    splits: Optional[list[str]] = None,
-    max_orgs_per_author: Optional[int] = None,
-    max_author_paper_ratio: Optional[float] = None,
-    ignore_authors: Optional[list[str]] = None,
-    max_org_affiliation: Optional[int] = None,
-    networks_path: Optional[str | os.PathLike[str]] = None,
+    embeddings: dict[Any, torch.Tensor],
+    save_folder: str | None = None,
+    logs_file: str | None = None,
+    selected_names: list[str] | None = None,
+    splits: list[str] | None = None,
+    max_orgs_per_author: int | None = None,
+    max_author_paper_ratio: float | None = None,
+    ignore_authors: list[str] | None = None,
+    max_org_affiliation: int | None = None,
+    networks_path: str | os.PathLike[str] | None = None,
 ) -> list[nx.Graph]:
     """Generate and save one undirected NetworkX graph per ambiguous name."""
 

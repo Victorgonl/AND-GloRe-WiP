@@ -12,7 +12,7 @@ outputs_path: "outputs/andglore_lagosandv1.pt"
 selected_names: null
 #selected_names: ["wei_wang"]
 
-max_org_affiliation: 5
+max_org_affiliation: null
 
 training_args:
   seeds: [2026]
